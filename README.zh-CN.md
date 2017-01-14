@@ -72,7 +72,7 @@ func (cg *ConsumerGroup) SetLogger(logger Logger)
 
 ---
 
-更多详细信息可以见同级目录下的[example](./example.go)
+更多详细信息可以见同级目录下的[example](example/example.go)
 
 ### TYPE
 #### Config 

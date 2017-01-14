@@ -80,7 +80,7 @@ more details [Logger](#logger)
 
 ---
 
-more details about usage see [example](./example.go)
+more details about usage see [example](example/example.go)
 
 ### TYPE
 #### Config 
