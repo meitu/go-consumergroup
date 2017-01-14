@@ -7,7 +7,7 @@ import (
 	"syscall"
 	"time"
 
-	"go-consumergroup/consumergroup"
+	"go-consumergroup"
 )
 
 func handleSignal(sig os.Signal, cg *consumergroup.ConsumerGroup) {
