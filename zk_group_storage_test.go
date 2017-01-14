@@ -103,9 +103,9 @@ func TestZKGroupStorageRegisterAndGetAndDeleteConsumer(t *testing.T) {
 func TestZKGroupWatchConsumerList(t *testing.T) {
 	zk, _ := NewZKGroupStorage([]string{"127.0.0.1:2181"}, 6*time.Second)
 
-	consumer1 := fmt.Sprintf(testConsumerId, rand.Int())
-	consumer2 := fmt.Sprintf(testConsumerId, rand.Int())
-	consumer3 := fmt.Sprintf(testConsumerId, rand.Int())
+	consumer1 := fmt.Sprintf("%s-%d", testConsumerId, rand.Int())
+	consumer2 := fmt.Sprintf("%s-%d", testConsumerId, rand.Int())
+	consumer3 := fmt.Sprintf("%s-%d", testConsumerId, rand.Int())
 	consumerList := []string{consumer1, consumer2, consumer3}
 	for _, consumer := range consumerList {
 		zk.RegisterConsumer(testGroup, consumer, nil)
