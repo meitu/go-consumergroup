@@ -179,7 +179,6 @@ CONSUME_TOPIC_LOOP:
 			return
 		}
 	}
-	return
 }
 
 func (cg *ConsumerGroup) consumeTopic(topic string) {
