@@ -7,7 +7,7 @@ import (
 	"syscall"
 	"time"
 
-	"go-consumergroup"
+	"github.com/meitu/go-consumergroup"
 )
 
 func handleSignal(sig os.Signal, cg *consumergroup.ConsumerGroup) {

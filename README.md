@@ -1,4 +1,4 @@
-# go-consumergroup
+# go-consumergroup [![Build Status](https://travis-ci.org/meitu/go-consumergroup.svg?branch=master)](https://travis-ci.org/meitu/go-consumergroup)
 
 Go-consumergroup is a kafka consumer library written in golang with group and rebalance supports.
 
