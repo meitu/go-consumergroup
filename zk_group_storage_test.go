@@ -62,7 +62,7 @@ func TestZKGroupStorageClaimAndGetAndReleasePartition(t *testing.T) {
 	}
 	if cid != testConsumerId {
 		zk.ReleasePartition(testGroup, testTopic, 0)
-		t.Error("partition owner get from zookeeper isn't expection")
+		t.Error("partition owner get from zookeeper isn't unexpected")
 	}
 
 	zk.ReleasePartition(testGroup, testTopic, 0)
@@ -95,7 +95,7 @@ func TestZKGroupStorageRegisterAndGetAndDeleteConsumer(t *testing.T) {
 
 	if consumerList[0] != testConsumerId {
 		zk.DeleteConsumer(testGroup, testConsumerId)
-		t.Fatal("consumer id get from zookeeper isn't expection")
+		t.Fatal("consumer id get from zookeeper isn't expected")
 	}
 	zk.DeleteConsumer(testGroup, testConsumerId)
 }
@@ -150,7 +150,7 @@ func TestZKGroupStorageCommitAndGetOffset(t *testing.T) {
 	}
 
 	if offset != testOffset {
-		t.Error("offset get from zookeeper isn't expection")
+		t.Error("offset get from zookeeper isn't unexpected")
 	}
 
 	err = zk.CommitOffset(testGroup, testTopic, 0, testOffset+1)
