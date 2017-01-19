@@ -11,7 +11,7 @@ const (
 	testValue      = "go_test_value"
 	testTopic      = "go_test_topic"
 	testGroup      = "go_test_group"
-	testConsumerId = "go_test_consumer_id"
+	testConsumerID = "go_test_consumer_id"
 )
 
 func TestZKGroupStorageInvalidServerList(t *testing.T) {
@@ -38,7 +38,7 @@ func TestZKGroupStorageValidates(t *testing.T) {
 func TestZKGroupStorageClaimAndGetAndReleasePartition(t *testing.T) {
 	zk, _ := NewZKGroupStorage([]string{"127.0.0.1:2181"}, 6*time.Second)
 
-	err := zk.ClaimPartition(testGroup, testTopic, 0, testConsumerId)
+	err := zk.ClaimPartition(testGroup, testTopic, 0, testConsumerID)
 	if err != nil {
 		t.Error(err)
 	}
@@ -48,8 +48,8 @@ func TestZKGroupStorageClaimAndGetAndReleasePartition(t *testing.T) {
 		t.Error(err)
 	}
 
-	zk.ClaimPartition(testGroup, testTopic, 0, testConsumerId)
-	err = zk.ClaimPartition(testGroup, testTopic, 0, testConsumerId)
+	zk.ClaimPartition(testGroup, testTopic, 0, testConsumerID)
+	err = zk.ClaimPartition(testGroup, testTopic, 0, testConsumerID)
 	if err == nil {
 		zk.ReleasePartition(testGroup, testTopic, 0)
 		t.Error("Expected it can't claim a partition twice, but it did")
@@ -60,7 +60,7 @@ func TestZKGroupStorageClaimAndGetAndReleasePartition(t *testing.T) {
 		zk.ReleasePartition(testGroup, testTopic, 0)
 		t.Error("get partition owner failed, because: ", err)
 	}
-	if cid != testConsumerId {
+	if cid != testConsumerID {
 		zk.ReleasePartition(testGroup, testTopic, 0)
 		t.Error("partition owner get from zookeeper isn't unexpected")
 	}
@@ -71,20 +71,20 @@ func TestZKGroupStorageClaimAndGetAndReleasePartition(t *testing.T) {
 func TestZKGroupStorageRegisterAndGetAndDeleteConsumer(t *testing.T) {
 	zk, _ := NewZKGroupStorage([]string{"127.0.0.1:2181"}, 6*time.Second)
 
-	err := zk.RegisterConsumer(testGroup, testConsumerId, nil)
+	err := zk.RegisterConsumer(testGroup, testConsumerID, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = zk.DeleteConsumer(testGroup, testConsumerId)
+	err = zk.DeleteConsumer(testGroup, testConsumerID)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	zk.RegisterConsumer(testGroup, testConsumerId, nil)
-	err = zk.RegisterConsumer(testGroup, testConsumerId, nil)
+	zk.RegisterConsumer(testGroup, testConsumerID, nil)
+	err = zk.RegisterConsumer(testGroup, testConsumerID, nil)
 	if err == nil {
-		zk.DeleteConsumer(testGroup, testConsumerId)
+		zk.DeleteConsumer(testGroup, testConsumerID)
 		t.Fatal("Expected it can't register consumer twice, but it did")
 	}
 
@@ -93,19 +93,19 @@ func TestZKGroupStorageRegisterAndGetAndDeleteConsumer(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if consumerList[0] != testConsumerId {
-		zk.DeleteConsumer(testGroup, testConsumerId)
+	if consumerList[0] != testConsumerID {
+		zk.DeleteConsumer(testGroup, testConsumerID)
 		t.Fatal("consumer id get from zookeeper isn't expected")
 	}
-	zk.DeleteConsumer(testGroup, testConsumerId)
+	zk.DeleteConsumer(testGroup, testConsumerID)
 }
 
 func TestZKGroupWatchConsumerList(t *testing.T) {
 	zk, _ := NewZKGroupStorage([]string{"127.0.0.1:2181"}, 6*time.Second)
 
-	consumer1 := fmt.Sprintf("%s-%d", testConsumerId, rand.Int())
-	consumer2 := fmt.Sprintf("%s-%d", testConsumerId, rand.Int())
-	consumer3 := fmt.Sprintf("%s-%d", testConsumerId, rand.Int())
+	consumer1 := fmt.Sprintf("%s-%d", testConsumerID, rand.Int())
+	consumer2 := fmt.Sprintf("%s-%d", testConsumerID, rand.Int())
+	consumer3 := fmt.Sprintf("%s-%d", testConsumerID, rand.Int())
 	consumerList := []string{consumer1, consumer2, consumer3}
 	for _, consumer := range consumerList {
 		zk.RegisterConsumer(testGroup, consumer, nil)

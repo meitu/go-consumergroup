@@ -11,6 +11,7 @@ import (
 	"github.com/samuel/go-zookeeper/zk"
 )
 
+// Constants defining consumer group's possible states.
 const (
 	CG_INIT = iota
 	CG_START
@@ -19,6 +20,8 @@ const (
 
 type topicOffset map[int32]int64
 
+// ConsumerGroup process Kafka messages from brokers. It supports group
+// and rebalance.
 type ConsumerGroup struct {
 	name           string
 	topicList      []string
@@ -39,6 +42,8 @@ type ConsumerGroup struct {
 	config *Config
 }
 
+// NewConsumerGroup creates a new consumer group instance using the given
+// group storage and config.
 func NewConsumerGroup(storage GroupStorage, config *Config) (*ConsumerGroup, error) {
 	var err error
 	if storage == nil {
@@ -51,7 +56,7 @@ func NewConsumerGroup(storage GroupStorage, config *Config) (*ConsumerGroup, err
 
 	cg := new(ConsumerGroup)
 
-	cg.name = config.groupId
+	cg.name = config.groupID
 	cg.topicList = config.topicList
 	cg.storage = storage
 	brokerList, err := storage.GetBrokerList()
@@ -67,7 +72,7 @@ func NewConsumerGroup(storage GroupStorage, config *Config) (*ConsumerGroup, err
 	}
 
 	cg.state = CG_INIT
-	cg.id = GenConsumerId()
+	cg.id = GenConsumerID()
 	cg.stopper = make(chan struct{})
 	cg.rebalanceTrigger = make(chan struct{})
 	cg.rebalanceOnce = new(sync.Once)
@@ -85,10 +90,13 @@ func NewConsumerGroup(storage GroupStorage, config *Config) (*ConsumerGroup, err
 	return cg, nil
 }
 
+// SetLogger sets the logger and you need to implement the Logger interface first.
 func (cg *ConsumerGroup) SetLogger(logger Logger) {
 	cg.logger = logger
 }
 
+// JoinGroup registers a consumer to the consumer group and starts to
+// process messages from the topic list.
 func (cg *ConsumerGroup) JoinGroup() error {
 
 	// the program exits if the consumer fails to register
@@ -100,10 +108,13 @@ func (cg *ConsumerGroup) JoinGroup() error {
 	return nil
 }
 
+// ExitGroup close cg.stopper to notify consumer group stop consuming topic
+// list.
 func (cg *ConsumerGroup) ExitGroup() {
 	cg.stopOnce.Do(func() { close(cg.stopper) })
 }
 
+// IsStopped returns true or false means if consumer group is stopped or not.
 func (cg *ConsumerGroup) IsStopped() bool {
 	return cg.state == CG_STOPPED
 }
@@ -217,20 +228,22 @@ func (cg *ConsumerGroup) getPartitionConsumer(topic string, partition int32, nex
 	return consumer, nil
 }
 
+// GetTopicNextMessageChannel returns a unbuffered channel from which to get
+// messages of a specified topic.
 func (cg *ConsumerGroup) GetTopicNextMessageChannel(topic string) (<-chan *sarama.ConsumerMessage, error) {
 	if cg.nextMessage[topic] == nil {
 		return nil, errors.New("have not found this topic in this cluster")
-	} else {
-		return cg.nextMessage[topic], nil
 	}
+	return cg.nextMessage[topic], nil
 }
 
+// GetTopicErrorsChannel returns a buffered channel from which to get error
+// messages of a specified topic.
 func (cg *ConsumerGroup) GetTopicErrorsChannel(topic string) (<-chan *sarama.ConsumerError, error) {
 	if cg.topicErrors[topic] == nil {
 		return nil, errors.New("have not found this topis in this cluster")
-	} else {
-		return cg.topicErrors[topic], nil
 	}
+	return cg.topicErrors[topic], nil
 }
 
 func (cg *ConsumerGroup) consumePartition(topic string, partition int32) {
@@ -365,9 +378,8 @@ func (cg *ConsumerGroup) getPartitionNum(topic string) (int, error) {
 	partitions, err := cg.saramaConsumer.Partitions(topic)
 	if err != nil {
 		return 0, err
-	} else {
-		return len(partitions), nil
 	}
+	return len(partitions), nil
 }
 
 func (cg *ConsumerGroup) checkRebalance() error {

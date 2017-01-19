@@ -7,8 +7,10 @@ import (
 	"github.com/Shopify/sarama"
 )
 
+// Config is used to pass configuration options to consumer groups. Items can
+// be modified directly.
 type Config struct {
-	groupId   string
+	groupID   string
 	topicList []string
 
 	SaramaConfig *sarama.Config
@@ -22,8 +24,9 @@ type Config struct {
 	ClaimPartitionRetryInterval time.Duration
 }
 
-func NewConfig(groupId string, topicList []string) (*Config, error) {
-	if groupId == "" {
+// NewConfig creates a new Config instance.
+func NewConfig(groupID string, topicList []string) (*Config, error) {
+	if groupID == "" {
 		return nil, errors.New("group id is invalid")
 	}
 
@@ -33,7 +36,7 @@ func NewConfig(groupId string, topicList []string) (*Config, error) {
 	topicList = SliceRemoveDuplicates(topicList)
 
 	config := new(Config)
-	config.groupId = groupId
+	config.groupID = groupID
 	config.topicList = topicList
 
 	config.SaramaConfig = sarama.NewConfig()

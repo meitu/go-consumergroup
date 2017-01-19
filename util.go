@@ -11,6 +11,7 @@ import (
 	"github.com/samuel/go-zookeeper/zk"
 )
 
+// SliceRemoveDuplicates removes duplicate elements from the slice.
 func SliceRemoveDuplicates(slice []string) []string {
 	sort.Strings(slice)
 	i := 0
@@ -27,7 +28,9 @@ func SliceRemoveDuplicates(slice []string) []string {
 	return slice
 }
 
-func GenConsumerId() string {
+// GenConsumerID generates a consumer ID by host name, current time and
+// a random number.
+func GenConsumerID() string {
 	name, err := os.Hostname()
 	if err != nil {
 		name = "unknown"
@@ -56,15 +59,16 @@ func mkdirRecursive(c *zk.Conn, zkPath string) error {
 	return err
 }
 
-func ZkCreateEphemeralPath(c *zk.Conn, zkPath string, data []byte) error {
-	return ZkCreateRecursive(c, zkPath, zk.FlagEphemeral, data)
+func ZKCreateEphemeralPath(c *zk.Conn, zkPath string, data []byte) error {
+	return ZKCreateRecursive(c, zkPath, zk.FlagEphemeral, data)
 }
 
-func ZkCreatePersistentPath(c *zk.Conn, zkPath string, data []byte) error {
-	return ZkCreateRecursive(c, zkPath, 0, data)
+func ZKCreatePersistentPath(c *zk.Conn, zkPath string, data []byte) error {
+	return ZKCreateRecursive(c, zkPath, 0, data)
 }
 
-func ZkCreateRecursive(c *zk.Conn, zkPath string, flags int32, data []byte) error {
+// ZKCreateRecursive creates the zkPath recursively if it does not exist.
+func ZKCreateRecursive(c *zk.Conn, zkPath string, flags int32, data []byte) error {
 	_, err := c.Create(zkPath, data, flags, zk.WorldACL(zk.PermAll))
 	if err != nil && err != zk.ErrNoNode {
 		return err
@@ -76,7 +80,9 @@ func ZkCreateRecursive(c *zk.Conn, zkPath string, flags int32, data []byte) erro
 	return err
 }
 
-func ZkSetPersistentPath(c *zk.Conn, zkPath string, data []byte) error {
+// ZKSetPersistentPath writes data to the node specified by zkPath. zkPath
+// will be created recursively if it does not exist in zookeeper.
+func ZKSetPersistentPath(c *zk.Conn, zkPath string, data []byte) error {
 	_, err := c.Set(zkPath, data, -1)
 	if err != nil && err != zk.ErrNoNode {
 		return err
