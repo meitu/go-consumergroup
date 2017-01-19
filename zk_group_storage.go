@@ -10,6 +10,7 @@ import (
 	"github.com/samuel/go-zookeeper/zk"
 )
 
+// constants defining the fixed path format.
 const (
 	OWNER_PATH     = "/consumers/%s/owners/%s/%d"
 	CONSUMERS_DIR  = "/consumers/%s/ids"
@@ -19,6 +20,7 @@ const (
 	BROKERS_PATH   = "/brokers/ids/%s"
 )
 
+// ZKGroupStorage is an instance of GroupStorage.
 type ZKGroupStorage struct {
 	serverList     []string
 	client         *zk.Conn
@@ -26,12 +28,14 @@ type ZKGroupStorage struct {
 }
 
 var (
-	invalidGroup      = errors.New("Invalid group")
-	invalidTopic      = errors.New("Invalid topic")
-	invalidConsumerId = errors.New("Invalid consumer ID")
-	invalidPartition  = "Invalid partition %s"
+	ErrInvalidGroup      = errors.New("Invalid group")
+	ErrInvalidTopic      = errors.New("Invalid topic")
+	ErrInvalidConsumerID = errors.New("Invalid consumer ID")
+	ErrInvalidPartition  = "Invalid partition %s"
 )
 
+// NewZKGroupStorage creates a new zookeeper group storage instance using the
+// given server list and session timeout.
 func NewZKGroupStorage(serverList []string, sessionTimeout time.Duration) (*ZKGroupStorage, error) {
 	if len(serverList) == 0 {
 		return nil, errors.New("zookeeper server list is invalid")
@@ -46,6 +50,7 @@ func NewZKGroupStorage(serverList []string, sessionTimeout time.Duration) (*ZKGr
 	return s, nil
 }
 
+// GetClient returns a zookeeper connetion.
 func (s *ZKGroupStorage) GetClient() (*zk.Conn, error) {
 	var err error
 	if s.client == nil {
@@ -54,6 +59,7 @@ func (s *ZKGroupStorage) GetClient() (*zk.Conn, error) {
 	return s.client, err
 }
 
+// CloseBadConn closes bad connections to prevent them from being used later.
 func (s *ZKGroupStorage) CloseBadConn(err error) {
 	if err == zk.ErrConnectionClosed || err == zk.ErrClosing || err == zk.ErrUnknown ||
 		err == zk.ErrSessionExpired || err == zk.ErrSessionMoved {
@@ -64,18 +70,18 @@ func (s *ZKGroupStorage) CloseBadConn(err error) {
 	}
 }
 
-func (s *ZKGroupStorage) ClaimPartition(group, topic string, partition int32, consumerId string) error {
+func (s *ZKGroupStorage) ClaimPartition(group, topic string, partition int32, consumerID string) error {
 	if group == "" {
-		return invalidGroup
+		return ErrInvalidGroup
 	}
 	if topic == "" {
-		return invalidTopic
+		return ErrInvalidTopic
 	}
-	if consumerId == "" {
-		return invalidConsumerId
+	if consumerID == "" {
+		return ErrInvalidConsumerID
 	}
 	if partition < 0 {
-		return fmt.Errorf(invalidPartition, partition)
+		return fmt.Errorf(ErrInvalidPartition, partition)
 	}
 
 	c, err := s.GetClient()
@@ -83,20 +89,20 @@ func (s *ZKGroupStorage) ClaimPartition(group, topic string, partition int32, co
 		return err
 	}
 	zkPath := fmt.Sprintf(OWNER_PATH, group, topic, partition)
-	err = ZkCreateEphemeralPath(c, zkPath, []byte(consumerId))
+	err = ZKCreateEphemeralPath(c, zkPath, []byte(consumerID))
 	s.CloseBadConn(err)
 	return err
 }
 
 func (s *ZKGroupStorage) ReleasePartition(group, topic string, partition int32) error {
 	if group == "" {
-		return invalidGroup
+		return ErrInvalidGroup
 	}
 	if topic == "" {
-		return invalidTopic
+		return ErrInvalidTopic
 	}
 	if partition < 0 {
-		return fmt.Errorf(invalidPartition, partition)
+		return fmt.Errorf(ErrInvalidPartition, partition)
 	}
 
 	c, err := s.GetClient()
@@ -111,13 +117,13 @@ func (s *ZKGroupStorage) ReleasePartition(group, topic string, partition int32) 
 
 func (s *ZKGroupStorage) GetPartitionOwner(group, topic string, partition int32) (string, error) {
 	if group == "" {
-		return "", invalidGroup
+		return "", ErrInvalidGroup
 	}
 	if topic == "" {
-		return "", invalidTopic
+		return "", ErrInvalidTopic
 	}
 	if partition < 0 {
-		return "", fmt.Errorf(invalidPartition, partition)
+		return "", fmt.Errorf(ErrInvalidPartition, partition)
 	}
 
 	c, err := s.GetClient()
@@ -133,37 +139,37 @@ func (s *ZKGroupStorage) GetPartitionOwner(group, topic string, partition int32)
 	return string(value), nil
 }
 
-func (s *ZKGroupStorage) RegisterConsumer(group, consumerId string, data []byte) error {
+func (s *ZKGroupStorage) RegisterConsumer(group, consumerID string, data []byte) error {
 	if group == "" {
-		return invalidGroup
+		return ErrInvalidGroup
 	}
-	if consumerId == "" {
-		return invalidConsumerId
+	if consumerID == "" {
+		return ErrInvalidConsumerID
 	}
 
 	c, err := s.GetClient()
 	if err != nil {
 		return err
 	}
-	zkPath := fmt.Sprintf(CONSUMERS_PATH, group, consumerId)
-	err = ZkCreateEphemeralPath(c, zkPath, data)
+	zkPath := fmt.Sprintf(CONSUMERS_PATH, group, consumerID)
+	err = ZKCreateEphemeralPath(c, zkPath, data)
 	s.CloseBadConn(err)
 	return err
 }
 
-func (s *ZKGroupStorage) DeleteConsumer(group, consumerId string) error {
+func (s *ZKGroupStorage) DeleteConsumer(group, consumerID string) error {
 	if group == "" {
-		return invalidGroup
+		return ErrInvalidGroup
 	}
-	if consumerId == "" {
-		return invalidConsumerId
+	if consumerID == "" {
+		return ErrInvalidConsumerID
 	}
 
 	c, err := s.GetClient()
 	if err != nil {
 		return err
 	}
-	zkPath := fmt.Sprintf(CONSUMERS_PATH, group, consumerId)
+	zkPath := fmt.Sprintf(CONSUMERS_PATH, group, consumerID)
 	err = c.Delete(zkPath, -1)
 	s.CloseBadConn(err)
 	return err
@@ -171,7 +177,7 @@ func (s *ZKGroupStorage) DeleteConsumer(group, consumerId string) error {
 
 func (s *ZKGroupStorage) WatchConsumerList(group string) (<-chan zk.Event, error) {
 	if group == "" {
-		return nil, invalidGroup
+		return nil, ErrInvalidGroup
 	}
 
 	c, err := s.GetClient()
@@ -226,7 +232,7 @@ func (s *ZKGroupStorage) GetBrokerList() ([]string, error) {
 
 func (s *ZKGroupStorage) GetConsumerList(group string) ([]string, error) {
 	if group == "" {
-		return nil, invalidGroup
+		return nil, ErrInvalidGroup
 	}
 
 	c, err := s.GetClient()
@@ -245,13 +251,13 @@ func (s *ZKGroupStorage) GetConsumerList(group string) ([]string, error) {
 
 func (s *ZKGroupStorage) CommitOffset(group, topic string, partition int32, offset int64) error {
 	if group == "" {
-		return invalidGroup
+		return ErrInvalidGroup
 	}
 	if topic == "" {
-		return invalidTopic
+		return ErrInvalidTopic
 	}
 	if partition < 0 {
-		return fmt.Errorf(invalidPartition, partition)
+		return fmt.Errorf(ErrInvalidPartition, partition)
 	}
 
 	c, err := s.GetClient()
@@ -260,20 +266,20 @@ func (s *ZKGroupStorage) CommitOffset(group, topic string, partition int32, offs
 	}
 	data := []byte(strconv.FormatInt(offset, 10))
 	zkPath := fmt.Sprintf(OFFSETS_PATH, group, topic, partition)
-	err = ZkSetPersistentPath(c, zkPath, data)
+	err = ZKSetPersistentPath(c, zkPath, data)
 	s.CloseBadConn(err)
 	return err
 }
 
 func (s *ZKGroupStorage) GetOffset(group, topic string, partition int32) (int64, error) {
 	if group == "" {
-		return -1, invalidGroup
+		return -1, ErrInvalidGroup
 	}
 	if topic == "" {
-		return -1, invalidTopic
+		return -1, ErrInvalidTopic
 	}
 	if partition < 0 {
-		return -1, fmt.Errorf(invalidPartition, partition)
+		return -1, fmt.Errorf(ErrInvalidPartition, partition)
 	}
 
 	c, err := s.GetClient()
@@ -286,9 +292,8 @@ func (s *ZKGroupStorage) GetOffset(group, topic string, partition int32) (int64,
 		s.CloseBadConn(err)
 		if err != zk.ErrNoNode {
 			return -1, err
-		} else {
-			return 0, nil
 		}
+		return 0, nil
 	}
 	return strconv.ParseInt(string(value), 10, 64)
 }

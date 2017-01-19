@@ -2,10 +2,10 @@ package consumergroup
 
 import "testing"
 
-var groupId string = "test_group"
-var topicList []string = []string{"test-topic"}
+var groupID = "test_group"
+var topicList = []string{"test-topic"}
 
-func TestConfigInvalidGroupId(t *testing.T) {
+func TestConfigInvalidGroupID(t *testing.T) {
 	_, err := NewConfig("", topicList)
 	if err == nil || err.Error() != "group id is invalid" {
 		t.Error("Expected group id is invalid, got ", err)
@@ -13,21 +13,21 @@ func TestConfigInvalidGroupId(t *testing.T) {
 }
 
 func TestConfigInvalidTopicList(t *testing.T) {
-	_, err := NewConfig(groupId, nil)
+	_, err := NewConfig(groupID, nil)
 	if err == nil || err.Error() != "topic list is invalid" {
 		t.Error("Expected topic list is invalid, got ", err)
 	}
 }
 
 func TestConfigEmptyTopicList(t *testing.T) {
-	_, err := NewConfig(groupId, []string{})
+	_, err := NewConfig(groupID, []string{})
 	if err == nil || err.Error() != "topic list is invalid" {
 		t.Error("Expected topic list is invalid, got ", err)
 	}
 }
 
 func TestConfigValidates(t *testing.T) {
-	_, err := NewConfig(groupId, topicList)
+	_, err := NewConfig(groupID, topicList)
 	if err != nil {
 		t.Error(err)
 	}

@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	test_path = "/test1/test2/test3/test4"
+	testPath = "/test1/test2/test3/test4"
 )
 
 func TestUtilSliceRemoveDuplicates(t *testing.T) {
@@ -42,12 +42,12 @@ func TestUtilMkdirRecursive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = mkdirRecursive(client, test_path)
+	err = mkdirRecursive(client, testPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	isExist, _, err := client.Exists(test_path)
+	isExist, _, err := client.Exists(testPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +55,7 @@ func TestUtilMkdirRecursive(t *testing.T) {
 		t.Fatal("make directory recursive failed, this path is not exist")
 	}
 
-	err = mkdirRecursive(client, test_path)
+	err = mkdirRecursive(client, testPath)
 	if err != nil {
 		if err == zk.ErrNodeExists {
 			t.Error("expected function mkdirRecursive can ignore make directory repeatedly, but it didn't")
@@ -64,7 +64,7 @@ func TestUtilMkdirRecursive(t *testing.T) {
 		}
 	}
 
-	err = deleteRecursive(client, test_path)
+	err = deleteRecursive(client, testPath)
 	if err != nil {
 		t.Error("detele directory recursive failed, please delete by zk client")
 	}

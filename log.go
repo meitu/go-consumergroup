@@ -2,6 +2,7 @@ package consumergroup
 
 import "fmt"
 
+// Logger is a simple log interface. The dafault implementation prints logs to stdout.
 type Logger interface {
 	Debug(args ...interface{})
 	Debugf(format string, args ...interface{})
@@ -13,6 +14,7 @@ type Logger interface {
 	Errorf(format string, args ...interface{})
 }
 
+// Constants defining log levels.
 const (
 	DEBUG = 0 + iota
 	INFO
@@ -20,10 +22,13 @@ const (
 	ERROR
 )
 
+// InnerLogger is the default implementation of the Logger interface that consumer groups used
+// to print logs to stdout.
 type InnerLogger struct {
 	level int
 }
 
+// NewInnerLog creates an InnerLogger instance.
 func NewInnerLog(level int) *InnerLogger {
 	logger := new(InnerLogger)
 	logger.level = level
