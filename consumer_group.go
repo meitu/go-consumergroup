@@ -293,6 +293,9 @@ func (cg *ConsumerGroup) consumePartition(topic string, partition int32) {
 		cg.ExitGroup()
 		return
 	}
+	if nextOffset == -1 {
+		nextOffset = cg.config.OffsetAutoReset
+	}
 	cg.logger.Debugf("[go-consumergroup] [%s, %d] get offset %d from offset storage\n", topic, partition, nextOffset)
 
 	consumer, err = cg.getPartitionConsumer(topic, partition, nextOffset)

@@ -293,7 +293,7 @@ func (s *ZKGroupStorage) GetOffset(group, topic string, partition int32) (int64,
 		if err != zk.ErrNoNode {
 			return -1, err
 		}
-		return 0, nil
+		return -1, nil
 	}
 	return strconv.ParseInt(string(value), 10, 64)
 }
