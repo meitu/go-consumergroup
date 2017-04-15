@@ -200,7 +200,11 @@ func (cg *ConsumerGroup) consumeTopic(topic string) {
 		cg.logger.Infof("[go-consumergroup] stop to consume topic [%s]\n", topic)
 	}()
 
-	partitions := cg.assignPartitionToConsumer(topic)
+	partitions, err := cg.assignPartitionToConsumer(topic)
+	if err != nil {
+		cg.logger.Errorf("[go-consumergroup] topic [%s] assign partition to consumer failed, %s", topic, err.Error())
+		return
+	}
 	cg.logger.Infof("[go-consumergroup] [%s] partitions %v are assigned to this consumer\n", topic, partitions)
 
 	for _, partition := range partitions {
@@ -407,16 +411,20 @@ func (cg *ConsumerGroup) checkRebalance() error {
 	return nil
 }
 
-func (cg *ConsumerGroup) assignPartitionToConsumer(topic string) []int32 {
+func (cg *ConsumerGroup) assignPartitionToConsumer(topic string) ([]int32, error) {
 	j := 0
 	partNum, err := cg.getPartitionNum(topic)
 	if err != nil || partNum == 0 {
-		cg.logger.Errorf("[go-consumergroup] [%s] get partition number failed: %s\n", topic, err.Error())
-		cg.ExitGroup()
-		return nil
+		return nil, err
 	}
-	consumerList, _ := cg.storage.GetConsumerList(cg.name)
+	consumerList, err := cg.storage.GetConsumerList(cg.name)
+	if err != nil {
+		return nil, err
+	}
 	consumerNum := len(consumerList)
+	if consumerNum == 0 {
+		return nil, errors.New("no consumer is found")
+	}
 	partitions := make([]int32, 0, partNum/consumerNum+1)
 	for i := 0; i < partNum; i++ {
 		id := consumerList[j%consumerNum]
@@ -425,5 +433,5 @@ func (cg *ConsumerGroup) assignPartitionToConsumer(topic string) []int32 {
 		}
 		j++
 	}
-	return partitions
+	return partitions, nil
 }
