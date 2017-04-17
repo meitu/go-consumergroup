@@ -8,6 +8,7 @@ type GroupStorage interface {
 	ReleasePartition(group, topic string, partition int32) error
 	GetPartitionOwner(group, topic string, partition int32) (string, error)
 	RegisterConsumer(group, consumerID string, data []byte) error
+	ExistsConsumer(group, consumerID string) (bool, error)
 	DeleteConsumer(group, consumerID string) error
 	GetBrokerList() ([]string, error)
 	GetConsumerList(group string) ([]string, error)

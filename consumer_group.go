@@ -160,6 +160,13 @@ CONSUME_TOPIC_LOOP:
 			return
 		}
 
+		wg.Add(1)
+		go func() {
+			defer cg.callRecover()
+			defer wg.Done()
+			cg.autoReconnect(cg.storage.(*ZKGroupStorage).sessionTimeout / 3)
+		}()
+
 		for _, topic := range cg.topicList {
 			wg.Add(1)
 			go func(topic string) {
@@ -202,7 +209,7 @@ func (cg *ConsumerGroup) consumeTopic(topic string) {
 
 	partitions, err := cg.assignPartitionToConsumer(topic)
 	if err != nil {
-		cg.logger.Errorf("[go-consumergroup] [%s, %s] assign partition to consumer failed, %s", cg.name, topic, err.Error())
+		cg.logger.Errorf("[go-consumergroup] [%s, %s] assign partition to consumer failed: %s", cg.name, topic, err.Error())
 		return
 	}
 	cg.logger.Infof("[go-consumergroup] [%s, %s] partitions %v are assigned to this consumer", cg.name, topic, partitions)
@@ -387,6 +394,32 @@ func (cg *ConsumerGroup) getPartitionNum(topic string) (int, error) {
 		return 0, err
 	}
 	return len(partitions), nil
+}
+
+func (cg *ConsumerGroup) autoReconnect(autoReconnectInterval time.Duration) {
+	timer := time.NewTimer(autoReconnectInterval)
+	cg.logger.Infof("[go-consumergroup] [%s] auto reconnect consumer goroutine start", cg.name)
+	defer cg.logger.Infof("[go-consumergroup] [%s] auto reconnect consumer goroutine stop", cg.name)
+	for {
+		select {
+		case <-cg.stopper:
+			return
+		case <-timer.C:
+			timer.Reset(autoReconnectInterval)
+			exist, err := cg.storage.ExistsConsumer(cg.name, cg.id)
+			if err != nil {
+				cg.logger.Errorf("[go-consumergroup] [%s] check consumer exist failed: %s", cg.name, err.Error())
+				break
+			}
+			if exist {
+				break
+			}
+			err = cg.storage.RegisterConsumer(cg.name, cg.id, nil)
+			if err != nil {
+				cg.logger.Errorf("[go-consumergroup] [%s] re-register consumer failed: %s", cg.name, err.Error())
+			}
+		}
+	}
 }
 
 func (cg *ConsumerGroup) checkRebalance() error {
