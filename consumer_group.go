@@ -396,8 +396,8 @@ func (cg *ConsumerGroup) getPartitionNum(topic string) (int, error) {
 	return len(partitions), nil
 }
 
-func (cg *ConsumerGroup) autoReconnect(autoReconnectInterval time.Duration) {
-	timer := time.NewTimer(autoReconnectInterval)
+func (cg *ConsumerGroup) autoReconnect(interval time.Duration) {
+	timer := time.NewTimer(interval)
 	cg.logger.Infof("[go-consumergroup] [%s] auto reconnect consumer goroutine start", cg.name)
 	defer cg.logger.Infof("[go-consumergroup] [%s] auto reconnect consumer goroutine stop", cg.name)
 	for {
@@ -405,7 +405,7 @@ func (cg *ConsumerGroup) autoReconnect(autoReconnectInterval time.Duration) {
 		case <-cg.stopper:
 			return
 		case <-timer.C:
-			timer.Reset(autoReconnectInterval)
+			timer.Reset(interval)
 			exist, err := cg.storage.ExistsConsumer(cg.name, cg.id)
 			if err != nil {
 				cg.logger.Errorf("[go-consumergroup] [%s] check consumer exist failed: %s", cg.name, err.Error())
