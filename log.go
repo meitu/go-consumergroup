@@ -42,9 +42,7 @@ func (logger *InnerLogger) Debug(args ...interface{}) {
 }
 
 func (logger *InnerLogger) Debugf(format string, args ...interface{}) {
-	if logger.level <= DEBUG {
-		fmt.Printf("[DEBUG] "+format, args...)
-	}
+	logger.Debug(fmt.Sprintf(format, args...))
 }
 
 func (logger *InnerLogger) Info(args ...interface{}) {
@@ -54,9 +52,7 @@ func (logger *InnerLogger) Info(args ...interface{}) {
 }
 
 func (logger *InnerLogger) Infof(format string, args ...interface{}) {
-	if logger.level <= INFO {
-		fmt.Printf("[INFO] "+format, args...)
-	}
+	logger.Info(fmt.Sprintf(format, args...))
 }
 func (logger *InnerLogger) Warn(args ...interface{}) {
 	if logger.level <= WARN {
@@ -65,9 +61,7 @@ func (logger *InnerLogger) Warn(args ...interface{}) {
 }
 
 func (logger *InnerLogger) Warnf(format string, args ...interface{}) {
-	if logger.level <= WARN {
-		fmt.Printf("[WARN] "+format, args...)
-	}
+	logger.Warn(fmt.Sprintf(format, args...))
 }
 
 func (logger *InnerLogger) Error(args ...interface{}) {
@@ -77,7 +71,5 @@ func (logger *InnerLogger) Error(args ...interface{}) {
 }
 
 func (logger *InnerLogger) Errorf(format string, args ...interface{}) {
-	if logger.level <= ERROR {
-		fmt.Printf("[ERROR] "+format, args...)
-	}
+	logger.Error(fmt.Sprintf(format, args...))
 }

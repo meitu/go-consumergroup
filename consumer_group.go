@@ -125,7 +125,7 @@ func (cg *ConsumerGroup) triggerRebalance() {
 
 func (cg *ConsumerGroup) callRecover() {
 	if err := recover(); err != nil {
-		cg.logger.Error(err, string(debug.Stack()))
+		cg.logger.Errorf("[go-consumergroup] [%s] %s %s", cg.name, err, string(debug.Stack()))
 		cg.ExitGroup()
 	}
 }
@@ -141,7 +141,7 @@ func (cg *ConsumerGroup) consumeTopicList() {
 		}
 		err := cg.storage.DeleteConsumer(cg.name, cg.id)
 		if err != nil {
-			cg.logger.Errorf("[go-consumergroup] delete consumer from zookeeper failed: %s\n", err.Error())
+			cg.logger.Errorf("[go-consumergroup] [%s] delete consumer from zookeeper failed: %s", cg.name, err.Error())
 		}
 	}()
 
@@ -149,16 +149,23 @@ func (cg *ConsumerGroup) consumeTopicList() {
 
 CONSUME_TOPIC_LOOP:
 	for {
-		cg.logger.Infof("[go-consumergroup] consumer %s started\n", cg.id)
+		cg.logger.Infof("[go-consumergroup] [%s] consumer started", cg.name)
 		cg.rebalanceOnce = new(sync.Once)
 		cg.stopOnce = new(sync.Once)
 
 		err := cg.checkRebalance()
 		if err != nil {
-			cg.logger.Errorf("[go-consumergroup] check rebalance failed: %s\n", err.Error())
+			cg.logger.Errorf("[go-consumergroup] [%s] check rebalance failed: %s", cg.name, err.Error())
 			cg.ExitGroup()
 			return
 		}
+
+		wg.Add(1)
+		go func() {
+			defer cg.callRecover()
+			defer wg.Done()
+			cg.autoReconnect(cg.storage.(*ZKGroupStorage).sessionTimeout / 3)
+		}()
 
 		for _, topic := range cg.topicList {
 			wg.Add(1)
@@ -174,7 +181,7 @@ CONSUME_TOPIC_LOOP:
 		// waiting for restart or rebalance
 		select {
 		case <-cg.rebalanceTrigger:
-			cg.logger.Info("[go-consumergroup] rebalance start")
+			cg.logger.Infof("[go-consumergroup] [%s] rebalance start", cg.name)
 			cg.ExitGroup()
 			// stopper will be closed to notify partition consumers to
 			// stop consuming when rebalance is triggered, and rebalanceTrigger
@@ -184,9 +191,9 @@ CONSUME_TOPIC_LOOP:
 			cg.rebalanceTrigger = make(chan struct{})
 			continue CONSUME_TOPIC_LOOP
 		case <-cg.stopper: // triggered when ExitGroup() is called
-			cg.logger.Info("[go-consumergroup] consumer shutting down")
+			cg.logger.Infof("[go-consumergroup] [%s] consumer shutting down", cg.name)
 			wg.Wait()
-			cg.logger.Info("[go-consumergroup] consumer shut down")
+			cg.logger.Infof("[go-consumergroup] [%s] consumer shut down", cg.name)
 			return
 		}
 	}
@@ -194,22 +201,22 @@ CONSUME_TOPIC_LOOP:
 
 func (cg *ConsumerGroup) consumeTopic(topic string) {
 	var wg sync.WaitGroup
-	cg.logger.Infof("[go-consumergroup] start to consume topic [%s]\n", topic)
+	cg.logger.Infof("[go-consumergroup] [%s, %s] start to consume", cg.name, topic)
 
 	defer func() {
-		cg.logger.Infof("[go-consumergroup] stop to consume topic [%s]\n", topic)
+		cg.logger.Infof("[go-consumergroup] [%s, %s] stop to consume", cg.name, topic)
 	}()
 
 	partitions, err := cg.assignPartitionToConsumer(topic)
 	if err != nil {
-		cg.logger.Errorf("[go-consumergroup] topic [%s] assign partition to consumer failed, %s", topic, err.Error())
+		cg.logger.Errorf("[go-consumergroup] [%s, %s] assign partition to consumer failed: %s", cg.name, topic, err.Error())
 		return
 	}
-	cg.logger.Infof("[go-consumergroup] [%s] partitions %v are assigned to this consumer\n", topic, partitions)
+	cg.logger.Infof("[go-consumergroup] [%s, %s] partitions %v are assigned to this consumer", cg.name, topic, partitions)
 
 	for _, partition := range partitions {
 		wg.Add(1)
-		cg.logger.Infof("[go-consumergroup] [%s, %d] consumer start\n", topic, partition)
+		cg.logger.Infof("[go-consumergroup] [%s, %s, %d] consumer start", cg.name, topic, partition)
 		go func(topic string, partition int32) {
 			defer cg.callRecover()
 			defer wg.Done()
@@ -265,50 +272,50 @@ func (cg *ConsumerGroup) consumePartition(topic string, partition int32) {
 	defer func() {
 		owner, err := cg.storage.GetPartitionOwner(cg.name, topic, partition)
 		if err != nil {
-			cg.logger.Warnf("[go-consumergroup] [%s, %d] Get partition owner failed: %s\n", topic, partition, err.Error())
+			cg.logger.Warnf("[go-consumergroup] [%s, %s, %d] Get partition owner failed: %s", cg.name, topic, partition, err.Error())
 		}
 		if cg.id == owner {
 			err := cg.storage.ReleasePartition(cg.name, topic, partition)
 			if err != nil {
-				cg.logger.Warnf("[go-consumergroup] [%s, %d] release partition failed: %s\n", topic, partition, err.Error())
+				cg.logger.Warnf("[go-consumergroup] [%s, %s, %d] release partition failed: %s", cg.name, topic, partition, err.Error())
 			}
 		}
 	}()
 
 	for i := 0; i < cg.config.ClaimPartitionRetry; i++ {
 		if err = cg.storage.ClaimPartition(cg.name, topic, partition, cg.id); err != nil {
-			cg.logger.Warnf("[go-consumergroup] [%s, %d] Claim partition failed: %s\n", topic, partition, err.Error())
+			cg.logger.Warnf("[go-consumergroup] [%s, %s, %d] Claim partition failed: %s", cg.name, topic, partition, err.Error())
 		}
 		if err == nil {
-			cg.logger.Infof("[go-consumergroup] [%s, %d] Claim partition succeeded!\n", topic, partition)
+			cg.logger.Infof("[go-consumergroup] [%s, %s, %d] Claim partition succeeded!", cg.name, topic, partition)
 			break
 		}
 		time.Sleep(cg.config.ClaimPartitionRetryInterval)
 	}
 	if err != nil {
-		cg.logger.Errorf("[go-consumergroup] [%s, %d] Claim partition failed after %d retries\n", topic, partition, cg.config.ClaimPartitionRetry)
+		cg.logger.Errorf("[go-consumergroup] [%s, %s, %d] Claim partition failed after %d retries", cg.name, topic, partition, cg.config.ClaimPartitionRetry)
 		cg.ExitGroup()
 		return
 	}
 
 	nextOffset, err := cg.storage.GetOffset(cg.name, topic, partition)
 	if err != nil {
-		cg.logger.Errorf("[go-consumergroup] [%s, %d] get offset failed: %s\n", topic, partition, err.Error())
+		cg.logger.Errorf("[go-consumergroup] [%s, %s, %d] get offset failed: %s", cg.name, topic, partition, err.Error())
 		cg.ExitGroup()
 		return
 	}
 	if nextOffset == -1 {
 		nextOffset = cg.config.OffsetAutoReset
 	}
-	cg.logger.Debugf("[go-consumergroup] [%s, %d] get offset %d from offset storage\n", topic, partition, nextOffset)
+	cg.logger.Debugf("[go-consumergroup] [%s, %s, %d] get offset %d from offset storage", cg.name, topic, partition, nextOffset)
 
 	consumer, err = cg.getPartitionConsumer(topic, partition, nextOffset)
 	if err != nil {
-		cg.logger.Errorf("[go-consumergroup] [%s, %d] get partition consumer failed: %s\n", topic, partition, err.Error())
+		cg.logger.Errorf("[go-consumergroup] [%s, %s, %d] get partition consumer failed: %s", cg.name, topic, partition, err.Error())
 		cg.ExitGroup()
 		return
 	}
-	cg.logger.Infof("[go-consumergroup] [%s, %d] consumer has started\n", topic, partition)
+	cg.logger.Infof("[go-consumergroup] [%s, %s, %d] consumer has started", cg.name, topic, partition)
 	defer consumer.Close()
 
 	prevCommitOffset := nextOffset
@@ -333,9 +340,9 @@ func (cg *ConsumerGroup) consumePartition(topic string, partition int32) {
 				}
 				err := cg.storage.CommitOffset(cg.name, topic, partition, offset)
 				if err != nil {
-					cg.logger.Warnf("[go-consumergroup] [%s, %d] commit offset failed: %s\n", topic, partition, err.Error())
+					cg.logger.Warnf("[go-consumergroup] [%s, %s, %d] commit offset failed: %s", cg.name, topic, partition, err.Error())
 				} else {
-					cg.logger.Debugf("[go-consumergroup] [%s, %d] commit offset %d to offset storage\n", topic, partition, offset)
+					cg.logger.Debugf("[go-consumergroup] [%s, %s, %d] commit offset %d to offset storage", cg.name, topic, partition, offset)
 					prevCommitOffset = offset
 				}
 			}
@@ -372,13 +379,13 @@ CONSUME_PARTITION_LOOP:
 	if nextOffset != prevCommitOffset {
 		err = cg.storage.CommitOffset(cg.name, topic, partition, nextOffset)
 		if err != nil {
-			cg.logger.Errorf("[go-consumergroup] [%s, %d] current offset %d commit offset failed: %s\n", topic, partition, nextOffset, err.Error())
+			cg.logger.Errorf("[go-consumergroup] [%s, %s, %d] current offset %d commit offset failed: %s", cg.name, topic, partition, nextOffset, err.Error())
 		} else {
-			cg.logger.Debugf("[go-consumergroup] [%s, %d] commit offset %d to offset storage\n", topic, partition, nextOffset)
+			cg.logger.Debugf("[go-consumergroup] [%s, %s, %d] commit offset %d to offset storage", cg.name, topic, partition, nextOffset)
 		}
 	}
 
-	cg.logger.Infof("[go-consumergroup] [%s, %d] consumer has stopped\n", topic, partition)
+	cg.logger.Infof("[go-consumergroup] [%s, %s, %d] consumer has stopped", cg.name, topic, partition)
 }
 
 func (cg *ConsumerGroup) getPartitionNum(topic string) (int, error) {
@@ -389,6 +396,32 @@ func (cg *ConsumerGroup) getPartitionNum(topic string) (int, error) {
 	return len(partitions), nil
 }
 
+func (cg *ConsumerGroup) autoReconnect(interval time.Duration) {
+	timer := time.NewTimer(interval)
+	cg.logger.Infof("[go-consumergroup] [%s] auto reconnect consumer goroutine start", cg.name)
+	defer cg.logger.Infof("[go-consumergroup] [%s] auto reconnect consumer goroutine stop", cg.name)
+	for {
+		select {
+		case <-cg.stopper:
+			return
+		case <-timer.C:
+			timer.Reset(interval)
+			exist, err := cg.storage.ExistsConsumer(cg.name, cg.id)
+			if err != nil {
+				cg.logger.Errorf("[go-consumergroup] [%s] check consumer exist failed: %s", cg.name, err.Error())
+				break
+			}
+			if exist {
+				break
+			}
+			err = cg.storage.RegisterConsumer(cg.name, cg.id, nil)
+			if err != nil {
+				cg.logger.Errorf("[go-consumergroup] [%s] re-register consumer failed: %s", cg.name, err.Error())
+			}
+		}
+	}
+}
+
 func (cg *ConsumerGroup) checkRebalance() error {
 	consumerListChange, err := cg.storage.WatchConsumerList(cg.name)
 	if err != nil {
@@ -397,12 +430,12 @@ func (cg *ConsumerGroup) checkRebalance() error {
 
 	go func() {
 		defer cg.callRecover()
-		defer cg.logger.Info("[go-consumergroup] rebalance checker exited")
+		defer cg.logger.Infof("[go-consumergroup] [%s] rebalance checker exited", cg.name)
 
-		cg.logger.Info("[go-consumergroup] rebalance checker started")
+		cg.logger.Infof("[go-consumergroup] [%s] rebalance checker started", cg.name)
 		select {
 		case <-consumerListChange:
-			cg.logger.Info("[go-consumergroup] trigger rebalance because consumer list change")
+			cg.logger.Infof("[go-consumergroup] [%s] trigger rebalance because consumer list change", cg.name)
 			cg.rebalanceOnce.Do(cg.triggerRebalance)
 		case <-cg.stopper:
 		}

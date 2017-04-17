@@ -142,6 +142,23 @@ func (s *ZKGroupStorage) RegisterConsumer(group, consumerID string, data []byte)
 	return err
 }
 
+func (s *ZKGroupStorage) ExistsConsumer(group, consumerID string) (bool, error) {
+	if group == "" {
+		return false, ErrInvalidGroup
+	}
+	if consumerID == "" {
+		return false, ErrInvalidConsumerID
+	}
+
+	c, err := s.GetClient()
+	if err != nil {
+		return false, err
+	}
+	zkPath := fmt.Sprintf(CONSUMERS_PATH, group, consumerID)
+	exist, _, err := c.Exists(zkPath)
+	return exist, err
+}
+
 func (s *ZKGroupStorage) DeleteConsumer(group, consumerID string) error {
 	if group == "" {
 		return ErrInvalidGroup
