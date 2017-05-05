@@ -320,34 +320,36 @@ func (cg *ConsumerGroup) consumePartition(topic string, partition int32) {
 
 	prevCommitOffset := nextOffset
 
-	wg.Add(1)
-	go func() {
-		defer cg.callRecover()
-		defer wg.Done()
-		timer := time.NewTimer(cg.config.OffsetAutoCommitInterval)
-		for {
-			select {
-			case <-cg.stopper:
-				return
-			case <-timer.C:
-				timer.Reset(cg.config.OffsetAutoCommitInterval)
-				mutex.Lock()
-				offset := nextOffset
-				mutex.Unlock()
+	if cg.config.OffsetAutoCommitEnable {
+		wg.Add(1)
+		go func() {
+			defer cg.callRecover()
+			defer wg.Done()
+			timer := time.NewTimer(cg.config.OffsetAutoCommitInterval)
+			for {
+				select {
+				case <-cg.stopper:
+					return
+				case <-timer.C:
+					timer.Reset(cg.config.OffsetAutoCommitInterval)
+					mutex.Lock()
+					offset := nextOffset
+					mutex.Unlock()
 
-				if offset == prevCommitOffset {
-					break
-				}
-				err := cg.storage.CommitOffset(cg.name, topic, partition, offset)
-				if err != nil {
-					cg.logger.Warnf("[go-consumergroup] [%s, %s, %d] commit offset failed: %s", cg.name, topic, partition, err.Error())
-				} else {
-					cg.logger.Debugf("[go-consumergroup] [%s, %s, %d] commit offset %d to offset storage", cg.name, topic, partition, offset)
-					prevCommitOffset = offset
+					if offset == prevCommitOffset {
+						break
+					}
+					err := cg.storage.CommitOffset(cg.name, topic, partition, offset)
+					if err != nil {
+						cg.logger.Warnf("[go-consumergroup] [%s, %s, %d] commit offset failed: %s", cg.name, topic, partition, err.Error())
+					} else {
+						cg.logger.Debugf("[go-consumergroup] [%s, %s, %d] commit offset %d to offset storage", cg.name, topic, partition, offset)
+						prevCommitOffset = offset
+					}
 				}
 			}
-		}
-	}()
+		}()
+	}
 
 	nextMessage := cg.nextMessage[topic]
 	errors := cg.topicErrors[topic]
@@ -376,12 +378,14 @@ CONSUME_PARTITION_LOOP:
 
 	wg.Wait()
 
-	if nextOffset != prevCommitOffset {
-		err = cg.storage.CommitOffset(cg.name, topic, partition, nextOffset)
-		if err != nil {
-			cg.logger.Errorf("[go-consumergroup] [%s, %s, %d] current offset %d commit offset failed: %s", cg.name, topic, partition, nextOffset, err.Error())
-		} else {
-			cg.logger.Debugf("[go-consumergroup] [%s, %s, %d] commit offset %d to offset storage", cg.name, topic, partition, nextOffset)
+	if cg.config.OffsetAutoCommitEnable {
+		if nextOffset != prevCommitOffset {
+			err = cg.storage.CommitOffset(cg.name, topic, partition, nextOffset)
+			if err != nil {
+				cg.logger.Errorf("[go-consumergroup] [%s, %s, %d] current offset %d commit offset failed: %s", cg.name, topic, partition, nextOffset, err.Error())
+			} else {
+				cg.logger.Debugf("[go-consumergroup] [%s, %s, %d] commit offset %d to offset storage", cg.name, topic, partition, nextOffset)
+			}
 		}
 	}
 
@@ -467,4 +471,8 @@ func (cg *ConsumerGroup) assignPartitionToConsumer(topic string) ([]int32, error
 		j++
 	}
 	return partitions, nil
+}
+
+func (cg *ConsumerGroup) CommitOffset(topic string, partition int32, offset int64) error {
+	return cg.storage.CommitOffset(cg.name, topic, partition, offset)
 }

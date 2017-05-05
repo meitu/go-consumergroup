@@ -17,6 +17,7 @@ type Config struct {
 
 	ErrorChannelBufferSize int
 
+	OffsetAutoCommitEnable   bool
 	OffsetAutoCommitInterval time.Duration
 	OffsetAutoReset          int64
 
@@ -43,6 +44,7 @@ func NewConfig(groupID string, topicList []string) (*Config, error) {
 
 	config.ErrorChannelBufferSize = 1024
 
+	config.OffsetAutoCommitEnable = true
 	config.OffsetAutoCommitInterval = 10 * time.Second
 	config.OffsetAutoReset = sarama.OffsetNewest
 
