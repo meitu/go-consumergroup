@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"time"
 
@@ -243,7 +244,8 @@ func (s *ZKGroupStorage) GetConsumerList(group string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	return consumerList, err
+	sort.Strings(consumerList)
+	return consumerList, nil
 }
 
 func (s *ZKGroupStorage) CommitOffset(group, topic string, partition int32, offset int64) error {
