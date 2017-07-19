@@ -14,29 +14,8 @@ const (
 	testConsumerID = "go_test_consumer_id"
 )
 
-func TestZKGroupStorageInvalidServerList(t *testing.T) {
-	_, err := NewZKGroupStorage(nil, 6*time.Second)
-	if err == nil || err.Error() != "zookeeper server list is invalid" {
-		t.Fatal("Expected zookeeper server list is invalid, got ", err)
-	}
-}
-
-func TestZKGroupStorageEmptyServerList(t *testing.T) {
-	_, err := NewZKGroupStorage([]string{}, 6*time.Second)
-	if err == nil || err.Error() != "zookeeper server list is invalid" {
-		t.Fatal("Expected zookeeper server list is invalid, got ", err)
-	}
-}
-
-func TestZKGroupStorageValidates(t *testing.T) {
-	_, err := NewZKGroupStorage([]string{"127.0.0.1:2181"}, 6*time.Second)
-	if err != nil {
-		t.Fatal(err)
-	}
-}
-
 func TestZKGroupStorageClaimAndGetAndReleasePartition(t *testing.T) {
-	zk, _ := NewZKGroupStorage([]string{"127.0.0.1:2181"}, 6*time.Second)
+	zk := newZKGroupStorage([]string{"127.0.0.1:2181"}, 6*time.Second)
 
 	err := zk.claimPartition(testGroup, testTopic, 0, testConsumerID)
 	if err != nil {
@@ -69,7 +48,7 @@ func TestZKGroupStorageClaimAndGetAndReleasePartition(t *testing.T) {
 }
 
 func TestZKGroupStorageRegisterAndGetAndDeleteConsumer(t *testing.T) {
-	zk, _ := NewZKGroupStorage([]string{"127.0.0.1:2181"}, 6*time.Second)
+	zk := newZKGroupStorage([]string{"127.0.0.1:2181"}, 6*time.Second)
 
 	err := zk.registerConsumer(testGroup, testConsumerID, nil)
 	if err != nil {
@@ -101,7 +80,7 @@ func TestZKGroupStorageRegisterAndGetAndDeleteConsumer(t *testing.T) {
 }
 
 func TestZKGroupWatchConsumerList(t *testing.T) {
-	zk, _ := NewZKGroupStorage([]string{"127.0.0.1:2181"}, 6*time.Second)
+	zk := newZKGroupStorage([]string{"127.0.0.1:2181"}, 6*time.Second)
 
 	consumer1 := fmt.Sprintf("%s-%d", testConsumerID, rand.Int())
 	consumer2 := fmt.Sprintf("%s-%d", testConsumerID, rand.Int())
@@ -136,7 +115,7 @@ func TestZKGroupWatchConsumerList(t *testing.T) {
 }
 
 func TestZKGroupStorageCommitAndGetOffset(t *testing.T) {
-	zk, _ := NewZKGroupStorage([]string{"127.0.0.1:2181"}, 6*time.Second)
+	zk := newZKGroupStorage([]string{"127.0.0.1:2181"}, 6*time.Second)
 	testOffset := rand.Int63()
 
 	err := zk.commitOffset(testGroup, testTopic, 0, testOffset)

@@ -25,7 +25,7 @@ type topicOffset map[int32]int64
 type ConsumerGroup struct {
 	name           string
 	topicList      []string
-	storage        GroupStorage
+	storage        groupStorage
 	saramaConsumer sarama.Consumer
 
 	id               string
@@ -44,22 +44,20 @@ type ConsumerGroup struct {
 
 // NewConsumerGroup creates a new consumer group instance using the given
 // group storage and config.
-func NewConsumerGroup(storage GroupStorage, config *Config) (*ConsumerGroup, error) {
-	var err error
-	if storage == nil {
-		return nil, errors.New("group storage can't be null")
-	}
-
+func NewConsumerGroup(config *Config) (*ConsumerGroup, error) {
 	if config == nil {
 		return nil, errors.New("config can't be null")
 	}
+	err := config.validate()
+	if err != nil {
+		return nil, fmt.Errorf("vaildate config failed, as %s", err)
+	}
 
 	cg := new(ConsumerGroup)
-
-	cg.name = config.groupID
-	cg.topicList = config.topicList
-	cg.storage = storage
-	brokerList, err := storage.getBrokerList()
+	cg.name = config.GroupID
+	cg.topicList = config.TopicList
+	cg.storage = newZKGroupStorage(config.ZkList, config.ZkSessionTimeout)
+	brokerList, err := cg.storage.getBrokerList()
 	if err != nil {
 		return nil, fmt.Errorf("get brokerList failed: %s", err.Error())
 	}
@@ -77,14 +75,12 @@ func NewConsumerGroup(storage GroupStorage, config *Config) (*ConsumerGroup, err
 	cg.rebalanceTrigger = make(chan struct{})
 	cg.rebalanceOnce = new(sync.Once)
 	cg.stopOnce = new(sync.Once)
-
 	cg.nextMessage = make(map[string]chan *sarama.ConsumerMessage)
 	cg.topicErrors = make(map[string]chan *sarama.ConsumerError)
 	for _, topic := range cg.topicList {
 		cg.nextMessage[topic] = make(chan *sarama.ConsumerMessage)
 		cg.topicErrors[topic] = make(chan *sarama.ConsumerError, config.ErrorChannelBufferSize)
 	}
-
 	cg.logger = newDefaultLogger(infoLevel)
 	cg.config = config
 	return cg, nil
@@ -164,7 +160,7 @@ CONSUME_TOPIC_LOOP:
 		go func() {
 			defer cg.callRecover()
 			defer wg.Done()
-			cg.autoReconnect(cg.storage.(*ZKGroupStorage).sessionTimeout / 3)
+			cg.autoReconnect(cg.storage.(*zkGroupStorage).sessionTimeout / 3)
 		}()
 
 		for _, topic := range cg.topicList {

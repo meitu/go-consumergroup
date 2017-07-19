@@ -2,8 +2,7 @@ package consumergroup
 
 import "github.com/samuel/go-zookeeper/zk"
 
-// GroupStorage manages consumers, topics, partitions and offsets.
-type GroupStorage interface {
+type groupStorage interface {
 	claimPartition(group, topic string, partition int32, consumerID string) error
 	releasePartition(group, topic string, partition int32) error
 	getPartitionOwner(group, topic string, partition int32) (string, error)

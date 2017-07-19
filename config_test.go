@@ -2,33 +2,32 @@ package consumergroup
 
 import "testing"
 
-var groupID = "test_group"
-var topicList = []string{"test-topic"}
-
-func TestConfigInvalidGroupID(t *testing.T) {
-	_, err := NewConfig("", topicList)
-	if err == nil || err.Error() != "group id is invalid" {
-		t.Error("Expected group id is invalid, got ", err)
+func TestConfigValidate(t *testing.T) {
+	conf := NewConfig()
+	conf.ZkList = []string{}
+	conf.TopicList = []string{}
+	if err := conf.validate(); err == nil {
+		t.Fatal("config invalidate is expected")
 	}
-}
-
-func TestConfigInvalidTopicList(t *testing.T) {
-	_, err := NewConfig(groupID, nil)
-	if err == nil || err.Error() != "topic list is invalid" {
-		t.Error("Expected topic list is invalid, got ", err)
+	conf.ZkList = []string{"127.0.0.1:2181", "127.0.0.1:2181"}
+	if err := conf.validate(); err == nil {
+		t.Fatal("config invalidate is expected")
 	}
-}
-
-func TestConfigEmptyTopicList(t *testing.T) {
-	_, err := NewConfig(groupID, []string{})
-	if err == nil || err.Error() != "topic list is invalid" {
-		t.Error("Expected topic list is invalid, got ", err)
+	conf.TopicList = []string{"a", "a", "b", "c", "a"}
+	if err := conf.validate(); err == nil {
+		t.Fatal("config validate is expected")
 	}
-}
-
-func TestConfigValidates(t *testing.T) {
-	_, err := NewConfig(groupID, topicList)
-	if err != nil {
-		t.Error(err)
+	conf.GroupID = "go-test-group"
+	if err := conf.validate(); err == nil {
+		t.Fatal("config invalidate is expected")
+	}
+	if len(conf.TopicList) != 3 {
+		t.Fatal("config validate should remove duplicate topics")
+	}
+	if len(conf.ZkList) != 1 {
+		t.Fatal("config validate should remove duplicate zk addresses")
+	}
+	if err := conf.validate(); err != nil {
+		t.Fatalf("validate is expected, but got error %s", err)
 	}
 }
