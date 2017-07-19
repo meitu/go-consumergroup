@@ -38,66 +38,66 @@ func TestZKGroupStorageValidates(t *testing.T) {
 func TestZKGroupStorageClaimAndGetAndReleasePartition(t *testing.T) {
 	zk, _ := NewZKGroupStorage([]string{"127.0.0.1:2181"}, 6*time.Second)
 
-	err := zk.ClaimPartition(testGroup, testTopic, 0, testConsumerID)
+	err := zk.claimPartition(testGroup, testTopic, 0, testConsumerID)
 	if err != nil {
 		t.Error(err)
 	}
 
-	err = zk.ReleasePartition(testGroup, testTopic, 0)
+	err = zk.releasePartition(testGroup, testTopic, 0)
 	if err != nil {
 		t.Error(err)
 	}
 
-	zk.ClaimPartition(testGroup, testTopic, 0, testConsumerID)
-	err = zk.ClaimPartition(testGroup, testTopic, 0, testConsumerID)
+	zk.claimPartition(testGroup, testTopic, 0, testConsumerID)
+	err = zk.claimPartition(testGroup, testTopic, 0, testConsumerID)
 	if err == nil {
-		zk.ReleasePartition(testGroup, testTopic, 0)
+		zk.releasePartition(testGroup, testTopic, 0)
 		t.Error("Expected it can't claim a partition twice, but it did")
 	}
 
-	cid, err := zk.GetPartitionOwner(testGroup, testTopic, 0)
+	cid, err := zk.getPartitionOwner(testGroup, testTopic, 0)
 	if err != nil {
-		zk.ReleasePartition(testGroup, testTopic, 0)
+		zk.releasePartition(testGroup, testTopic, 0)
 		t.Error("get partition owner failed, because: ", err)
 	}
 	if cid != testConsumerID {
-		zk.ReleasePartition(testGroup, testTopic, 0)
+		zk.releasePartition(testGroup, testTopic, 0)
 		t.Error("partition owner get from zookeeper isn't unexpected")
 	}
 
-	zk.ReleasePartition(testGroup, testTopic, 0)
+	zk.releasePartition(testGroup, testTopic, 0)
 }
 
 func TestZKGroupStorageRegisterAndGetAndDeleteConsumer(t *testing.T) {
 	zk, _ := NewZKGroupStorage([]string{"127.0.0.1:2181"}, 6*time.Second)
 
-	err := zk.RegisterConsumer(testGroup, testConsumerID, nil)
+	err := zk.registerConsumer(testGroup, testConsumerID, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = zk.DeleteConsumer(testGroup, testConsumerID)
+	err = zk.deleteConsumer(testGroup, testConsumerID)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	zk.RegisterConsumer(testGroup, testConsumerID, nil)
-	err = zk.RegisterConsumer(testGroup, testConsumerID, nil)
+	zk.registerConsumer(testGroup, testConsumerID, nil)
+	err = zk.registerConsumer(testGroup, testConsumerID, nil)
 	if err == nil {
-		zk.DeleteConsumer(testGroup, testConsumerID)
+		zk.deleteConsumer(testGroup, testConsumerID)
 		t.Fatal("Expected it can't register consumer twice, but it did")
 	}
 
-	consumerList, err := zk.GetConsumerList(testGroup)
+	consumerList, err := zk.getConsumerList(testGroup)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	if consumerList[0] != testConsumerID {
-		zk.DeleteConsumer(testGroup, testConsumerID)
+		zk.deleteConsumer(testGroup, testConsumerID)
 		t.Fatal("consumer id get from zookeeper isn't expected")
 	}
-	zk.DeleteConsumer(testGroup, testConsumerID)
+	zk.deleteConsumer(testGroup, testConsumerID)
 }
 
 func TestZKGroupWatchConsumerList(t *testing.T) {
@@ -108,10 +108,10 @@ func TestZKGroupWatchConsumerList(t *testing.T) {
 	consumer3 := fmt.Sprintf("%s-%d", testConsumerID, rand.Int())
 	consumerList := []string{consumer1, consumer2, consumer3}
 	for _, consumer := range consumerList {
-		zk.RegisterConsumer(testGroup, consumer, nil)
+		zk.registerConsumer(testGroup, consumer, nil)
 	}
 
-	ch, err := zk.WatchConsumerList(testGroup)
+	ch, err := zk.watchConsumerList(testGroup)
 	if err != nil {
 		t.Error(err)
 	}
@@ -122,7 +122,7 @@ func TestZKGroupWatchConsumerList(t *testing.T) {
 	default:
 	}
 
-	zk.DeleteConsumer(testGroup, consumer1)
+	zk.deleteConsumer(testGroup, consumer1)
 
 	select {
 	case <-ch:
@@ -131,7 +131,7 @@ func TestZKGroupWatchConsumerList(t *testing.T) {
 	}
 
 	for _, consumer := range consumerList {
-		zk.DeleteConsumer(testGroup, consumer)
+		zk.deleteConsumer(testGroup, consumer)
 	}
 }
 
@@ -139,12 +139,12 @@ func TestZKGroupStorageCommitAndGetOffset(t *testing.T) {
 	zk, _ := NewZKGroupStorage([]string{"127.0.0.1:2181"}, 6*time.Second)
 	testOffset := rand.Int63()
 
-	err := zk.CommitOffset(testGroup, testTopic, 0, testOffset)
+	err := zk.commitOffset(testGroup, testTopic, 0, testOffset)
 	if err != nil {
 		t.Error(err)
 	}
 
-	offset, err := zk.GetOffset(testGroup, testTopic, 0)
+	offset, err := zk.getOffset(testGroup, testTopic, 0)
 	if err != nil {
 		t.Error(err)
 	}
@@ -153,7 +153,7 @@ func TestZKGroupStorageCommitAndGetOffset(t *testing.T) {
 		t.Error("offset get from zookeeper isn't unexpected")
 	}
 
-	err = zk.CommitOffset(testGroup, testTopic, 0, testOffset+1)
+	err = zk.commitOffset(testGroup, testTopic, 0, testOffset+1)
 	if err != nil {
 		t.Error(err)
 	}

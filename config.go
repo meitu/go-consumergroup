@@ -34,7 +34,7 @@ func NewConfig(groupID string, topicList []string) (*Config, error) {
 	if len(topicList) == 0 {
 		return nil, errors.New("topic list is invalid")
 	}
-	topicList = SliceRemoveDuplicates(topicList)
+	topicList = sliceRemoveDuplicates(topicList)
 
 	config := new(Config)
 	config.groupID = groupID
