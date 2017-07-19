@@ -31,8 +31,8 @@ type ConsumerGroup struct {
 	stopOnce         *sync.Once
 	rebalanceOnce    *sync.Once
 
-	nextMessage map[string]chan *sarama.ConsumerMessage
-	topicErrors map[string]chan *sarama.ConsumerError
+	messageChans map[string]chan *sarama.ConsumerMessage
+	errorChans   map[string]chan *sarama.ConsumerError
 
 	logger Logger
 	config *Config
@@ -49,36 +49,43 @@ func NewConsumerGroup(config *Config) (*ConsumerGroup, error) {
 	}
 
 	cg := new(ConsumerGroup)
+	cg.state = cgInit
+	cg.config = config
+	cg.id = genConsumerID()
 	cg.name = config.GroupID
 	cg.topicList = config.TopicList
+	cg.stopOnce = new(sync.Once)
+	cg.stopper = make(chan struct{})
+	cg.rebalanceOnce = new(sync.Once)
+	cg.rebalanceTrigger = make(chan struct{})
+	cg.logger = newDefaultLogger(infoLevel)
 	cg.storage = newZKGroupStorage(config.ZkList, config.ZkSessionTimeout)
+	cg.messageChans = make(map[string]chan *sarama.ConsumerMessage)
+	cg.errorChans = make(map[string]chan *sarama.ConsumerError)
+	for _, topic := range cg.topicList {
+		cg.messageChans[topic] = make(chan *sarama.ConsumerMessage)
+		cg.errorChans[topic] = make(chan *sarama.ConsumerError, config.ErrorChannelBufferSize)
+	}
+	err = cg.initSaramaConsumer()
+	if err != nil {
+		return nil, fmt.Errorf("init sarama consumer, as %s", err)
+	}
+	return cg, nil
+}
+
+func (cg *ConsumerGroup) initSaramaConsumer() error {
 	brokerList, err := cg.storage.getBrokerList()
 	if err != nil {
-		return nil, fmt.Errorf("get brokerList failed: %s", err.Error())
+		return err
 	}
 	if len(brokerList) == 0 {
-		return nil, errors.New("no broker alive")
+		return errors.New("no broker alive")
 	}
-
-	if cg.saramaConsumer, err = sarama.NewConsumer(brokerList, config.SaramaConfig); err != nil {
-		return nil, fmt.Errorf("sarama consumer initialize failed, because %s", err.Error())
+	cg.saramaConsumer, err = sarama.NewConsumer(brokerList, cg.config.SaramaConfig)
+	if err != nil {
+		return err
 	}
-
-	cg.state = cgInit
-	cg.id = genConsumerID()
-	cg.stopper = make(chan struct{})
-	cg.rebalanceTrigger = make(chan struct{})
-	cg.rebalanceOnce = new(sync.Once)
-	cg.stopOnce = new(sync.Once)
-	cg.nextMessage = make(map[string]chan *sarama.ConsumerMessage)
-	cg.topicErrors = make(map[string]chan *sarama.ConsumerError)
-	for _, topic := range cg.topicList {
-		cg.nextMessage[topic] = make(chan *sarama.ConsumerMessage)
-		cg.topicErrors[topic] = make(chan *sarama.ConsumerError, config.ErrorChannelBufferSize)
-	}
-	cg.logger = newDefaultLogger(infoLevel)
-	cg.config = config
-	return cg, nil
+	return nil
 }
 
 // SetLogger allow user to set user's logger, or defaultLogger would print to stdout.
@@ -127,8 +134,8 @@ func (cg *ConsumerGroup) consumeTopicList() {
 	defer func() {
 		cg.state = cgStopped
 		for _, topic := range cg.topicList {
-			close(cg.nextMessage[topic])
-			close(cg.topicErrors[topic])
+			close(cg.messageChans[topic])
+			close(cg.errorChans[topic])
 		}
 		err := cg.storage.deleteConsumer(cg.name, cg.id)
 		if err != nil {
@@ -230,18 +237,18 @@ func (cg *ConsumerGroup) getPartitionConsumer(topic string, partition int32, nex
 
 // GetMessages was used to get a unbuffered message's channel from specified topic
 func (cg *ConsumerGroup) GetMessages(topic string) (<-chan *sarama.ConsumerMessage, error) {
-	if cg.nextMessage[topic] == nil {
+	if cg.messageChans[topic] == nil {
 		return nil, errors.New("have not found this topic in this cluster")
 	}
-	return cg.nextMessage[topic], nil
+	return cg.messageChans[topic], nil
 }
 
 // GetErrors was used to get a unbuffered error's channel from specified topic
 func (cg *ConsumerGroup) GetErrors(topic string) (<-chan *sarama.ConsumerError, error) {
-	if cg.topicErrors[topic] == nil {
+	if cg.errorChans[topic] == nil {
 		return nil, errors.New("have not found this topis in this cluster")
 	}
-	return cg.topicErrors[topic], nil
+	return cg.errorChans[topic], nil
 }
 
 func (cg *ConsumerGroup) consumePartition(topic string, partition int32) {
@@ -338,21 +345,19 @@ func (cg *ConsumerGroup) consumePartition(topic string, partition int32) {
 		}()
 	}
 
-	nextMessage := cg.nextMessage[topic]
-	errors := cg.topicErrors[topic]
+	messageChan := cg.messageChans[topic]
+	errorChan := cg.errorChans[topic]
 
 CONSUME_PARTITION_LOOP:
 	for {
 		select {
 		case <-cg.stopper:
 			break CONSUME_PARTITION_LOOP
-
 		case error1 := <-consumer.Errors():
-			errors <- error1
-
+			errorChan <- error1
 		case message := <-consumer.Messages():
 			select {
-			case nextMessage <- message:
+			case messageChan <- message:
 				mutex.Lock()
 				nextOffset = message.Offset + 1
 				mutex.Unlock()
