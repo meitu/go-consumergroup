@@ -52,7 +52,7 @@ func main() {
 		fmt.Println("Failed to join group, err ", err.Error())
 		os.Exit(1)
 	}
-	messages, err := cg.GetTopicNextMessageChannel("test")
+	messages, err := cg.GetMessages("test")
 	if err != nil {
 		fmt.Println("Failed to get message channel, err", err.Error())
 	}

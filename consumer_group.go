@@ -148,7 +148,7 @@ CONSUME_TOPIC_LOOP:
 		cg.rebalanceOnce = new(sync.Once)
 		cg.stopOnce = new(sync.Once)
 
-		err := cg.checkRebalance()
+		err := cg.watchRebalance()
 		if err != nil {
 			cg.logger.Errorf("[go-consumergroup] [%s] check rebalance failed: %s", cg.name, err.Error())
 			cg.ExitGroup()
@@ -202,7 +202,7 @@ func (cg *ConsumerGroup) consumeTopic(topic string) {
 		cg.logger.Infof("[go-consumergroup] [%s, %s] stop to consume", cg.name, topic)
 	}()
 
-	partitions, err := cg.assignPartitionToConsumer(topic)
+	partitions, err := cg.assignPartitions(topic)
 	if err != nil {
 		cg.logger.Errorf("[go-consumergroup] [%s, %s] assign partition to consumer failed: %s", cg.name, topic, err.Error())
 		return
@@ -234,18 +234,16 @@ func (cg *ConsumerGroup) getPartitionConsumer(topic string, partition int32, nex
 	return consumer, nil
 }
 
-// GetTopicNextMessageChannel returns a unbuffered channel from which to get
-// messages of a specified topic.
-func (cg *ConsumerGroup) GetTopicNextMessageChannel(topic string) (<-chan *sarama.ConsumerMessage, error) {
+// GetMessages was used to get a unbuffered message's channel from specified topic
+func (cg *ConsumerGroup) GetMessages(topic string) (<-chan *sarama.ConsumerMessage, error) {
 	if cg.nextMessage[topic] == nil {
 		return nil, errors.New("have not found this topic in this cluster")
 	}
 	return cg.nextMessage[topic], nil
 }
 
-// GetTopicErrorsChannel returns a buffered channel from which to get error
-// messages of a specified topic.
-func (cg *ConsumerGroup) GetTopicErrorsChannel(topic string) (<-chan *sarama.ConsumerError, error) {
+// GetErrors was used to get a unbuffered error's channel from specified topic
+func (cg *ConsumerGroup) GetErrors(topic string) (<-chan *sarama.ConsumerError, error) {
 	if cg.topicErrors[topic] == nil {
 		return nil, errors.New("have not found this topis in this cluster")
 	}
@@ -421,7 +419,7 @@ func (cg *ConsumerGroup) autoReconnect(interval time.Duration) {
 	}
 }
 
-func (cg *ConsumerGroup) checkRebalance() error {
+func (cg *ConsumerGroup) watchRebalance() error {
 	consumerListChange, err := cg.storage.watchConsumerList(cg.name)
 	if err != nil {
 		return err
@@ -443,7 +441,7 @@ func (cg *ConsumerGroup) checkRebalance() error {
 	return nil
 }
 
-func (cg *ConsumerGroup) assignPartitionToConsumer(topic string) ([]int32, error) {
+func (cg *ConsumerGroup) assignPartitions(topic string) ([]int32, error) {
 	j := 0
 	partNum, err := cg.getPartitionNum(topic)
 	if err != nil || partNum == 0 {
