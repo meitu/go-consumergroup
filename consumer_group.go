@@ -11,7 +11,6 @@ import (
 	"github.com/samuel/go-zookeeper/zk"
 )
 
-// Constants defining consumer group's possible states.
 const (
 	cgInit = iota
 	cgStart
@@ -469,6 +468,10 @@ func (cg *ConsumerGroup) assignPartitionToConsumer(topic string) ([]int32, error
 	return partitions, nil
 }
 
+// CommitOffset is used to commit offset when auto commit was disabled
 func (cg *ConsumerGroup) CommitOffset(topic string, partition int32, offset int64) error {
+	if cg.config.OffsetAutoCommitEnable {
+		return errors.New("commit offset take effect when offset auto commit was disabled")
+	}
 	return cg.storage.commitOffset(cg.name, topic, partition, offset)
 }
