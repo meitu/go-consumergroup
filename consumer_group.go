@@ -19,8 +19,7 @@ const (
 
 type topicOffset map[int32]int64
 
-// ConsumerGroup process Kafka messages from brokers. It supports group
-// and rebalance.
+// ConsumerGroup consume message from Kafka with rebalancing supports
 type ConsumerGroup struct {
 	name           string
 	topicList      []string
@@ -41,8 +40,7 @@ type ConsumerGroup struct {
 	config *Config
 }
 
-// NewConsumerGroup creates a new consumer group instance using the given
-// group storage and config.
+// NewConsumerGroup create the ConsumerGroup instance with config
 func NewConsumerGroup(config *Config) (*ConsumerGroup, error) {
 	if config == nil {
 		return nil, errors.New("config can't be null")
@@ -85,16 +83,16 @@ func NewConsumerGroup(config *Config) (*ConsumerGroup, error) {
 	return cg, nil
 }
 
-// SetLogger sets the logger and you need to implement the Logger interface first.
+// SetLogger allow user to set user's logger, or defaultLogger would print to stdout.
 func (cg *ConsumerGroup) SetLogger(logger Logger) {
 	cg.logger = logger
 }
 
-// JoinGroup registers a consumer to the consumer group and starts to
-// process messages from the topic list.
+// JoinGroup would register ConsumerGroup, and rebalance would be triggered.
+// ConsumerGroup computes the partitions which should be consumed by consumer's num, and start fetching message.
 func (cg *ConsumerGroup) JoinGroup() error {
 
-	// the program exits if the consumer fails to register
+	// exit when failed to register the consumer
 	err := cg.storage.registerConsumer(cg.name, cg.id, nil)
 	if err != nil && err != zk.ErrNodeExists {
 		return err
@@ -103,13 +101,13 @@ func (cg *ConsumerGroup) JoinGroup() error {
 	return nil
 }
 
-// ExitGroup close cg.stopper to notify consumer group stop consuming topic
-// list.
+// ExitGroup would unregister ConsumerGroup, and rebalance would be triggered.
+// The partitions which consumed by this ConsumerGroup would be assigned to others.
 func (cg *ConsumerGroup) ExitGroup() {
 	cg.stopOnce.Do(func() { close(cg.stopper) })
 }
 
-// IsStopped returns true or false means if consumer group is stopped or not.
+// IsStopped return whether the ConsumerGroup was stopped or not.
 func (cg *ConsumerGroup) IsStopped() bool {
 	return cg.state == cgStopped
 }
@@ -173,19 +171,17 @@ CONSUME_TOPIC_LOOP:
 
 		cg.state = cgStart
 
-		// waiting for restart or rebalance
 		select {
-		case <-cg.rebalanceTrigger:
+		case <-cg.rebalanceTrigger: // Waiting for restart/rebalance
 			cg.logger.Infof("[go-consumergroup] [%s] rebalance start", cg.name)
 			cg.ExitGroup()
-			// stopper will be closed to notify partition consumers to
-			// stop consuming when rebalance is triggered, and rebalanceTrigger
-			// will also be closed to restart the consume topic loop in the meantime.
 			wg.Wait()
+			// The stopper channel was used to notify partition's consumer to stop consuming when rebalance is triggered.
+			// So we should reinit when rebalace was triggered, as it would be closed.
 			cg.stopper = make(chan struct{})
 			cg.rebalanceTrigger = make(chan struct{})
 			continue CONSUME_TOPIC_LOOP
-		case <-cg.stopper: // triggered when ExitGroup() is called
+		case <-cg.stopper: // Triggered when ExitGroup() was called
 			cg.logger.Infof("[go-consumergroup] [%s] consumer shutting down", cg.name)
 			wg.Wait()
 			cg.logger.Infof("[go-consumergroup] [%s] consumer shut down", cg.name)
@@ -355,7 +351,6 @@ CONSUME_PARTITION_LOOP:
 
 		case error1 := <-consumer.Errors():
 			errors <- error1
-			//sends error messages to the error channel
 
 		case message := <-consumer.Messages():
 			select {
@@ -466,7 +461,7 @@ func (cg *ConsumerGroup) assignPartitions(topic string) ([]int32, error) {
 	return partitions, nil
 }
 
-// CommitOffset is used to commit offset when auto commit was disabled
+// CommitOffset is used to commit offset when auto commit was disabled.
 func (cg *ConsumerGroup) CommitOffset(topic string, partition int32, offset int64) error {
 	if cg.config.OffsetAutoCommitEnable {
 		return errors.New("commit offset take effect when offset auto commit was disabled")
