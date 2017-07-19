@@ -17,8 +17,6 @@ const (
 	cgStopped
 )
 
-type topicOffset map[int32]int64
-
 // ConsumerGroup consume message from Kafka with rebalancing supports
 type ConsumerGroup struct {
 	name           string
