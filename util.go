@@ -11,8 +11,7 @@ import (
 	"github.com/samuel/go-zookeeper/zk"
 )
 
-// SliceRemoveDuplicates removes duplicate elements from the slice.
-func SliceRemoveDuplicates(slice []string) []string {
+func sliceRemoveDuplicates(slice []string) []string {
 	sort.Strings(slice)
 	i := 0
 	var j int
@@ -28,9 +27,7 @@ func SliceRemoveDuplicates(slice []string) []string {
 	return slice
 }
 
-// GenConsumerID generates a consumer ID by host name, current time and
-// a random number.
-func GenConsumerID() string {
+func genConsumerID() string {
 	name, err := os.Hostname()
 	if err != nil {
 		name = "unknown"
@@ -51,7 +48,6 @@ func mkdirRecursive(c *zk.Conn, zkPath string) error {
 			return err
 		}
 	}
-
 	_, err = c.Create(zkPath, nil, 0, zk.WorldACL(zk.PermAll))
 	if err == zk.ErrNodeExists {
 		err = nil
@@ -59,16 +55,15 @@ func mkdirRecursive(c *zk.Conn, zkPath string) error {
 	return err
 }
 
-func ZKCreateEphemeralPath(c *zk.Conn, zkPath string, data []byte) error {
-	return ZKCreateRecursive(c, zkPath, zk.FlagEphemeral, data)
+func zkCreateEphemeralPath(c *zk.Conn, zkPath string, data []byte) error {
+	return zkCreateRecursive(c, zkPath, zk.FlagEphemeral, data)
 }
 
-func ZKCreatePersistentPath(c *zk.Conn, zkPath string, data []byte) error {
-	return ZKCreateRecursive(c, zkPath, 0, data)
+func zkCreatePersistentPath(c *zk.Conn, zkPath string, data []byte) error {
+	return zkCreateRecursive(c, zkPath, 0, data)
 }
 
-// ZKCreateRecursive creates the zkPath recursively if it does not exist.
-func ZKCreateRecursive(c *zk.Conn, zkPath string, flags int32, data []byte) error {
+func zkCreateRecursive(c *zk.Conn, zkPath string, flags int32, data []byte) error {
 	_, err := c.Create(zkPath, data, flags, zk.WorldACL(zk.PermAll))
 	if err != nil && err != zk.ErrNoNode {
 		return err
@@ -80,9 +75,7 @@ func ZKCreateRecursive(c *zk.Conn, zkPath string, flags int32, data []byte) erro
 	return err
 }
 
-// ZKSetPersistentPath writes data to the node specified by zkPath. zkPath
-// will be created recursively if it does not exist in zookeeper.
-func ZKSetPersistentPath(c *zk.Conn, zkPath string, data []byte) error {
+func zkSetPersistentPath(c *zk.Conn, zkPath string, data []byte) error {
 	_, err := c.Set(zkPath, data, -1)
 	if err != nil && err != zk.ErrNoNode {
 		return err

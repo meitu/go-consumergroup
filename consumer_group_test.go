@@ -7,10 +7,12 @@ import (
 )
 
 func TestConsumerGroup(t *testing.T) {
-	storage, _ := NewZKGroupStorage([]string{"127.0.0.1:2181"}, 6*time.Second)
-	topicList := []string{"go-test-topic"}
-	config, err := NewConfig("go-test-group", topicList)
-	cg, err := NewConsumerGroup(storage, config)
+	conf := NewConfig()
+	conf.TopicList = []string{"go-test-topic"}
+	conf.GroupID = "go-test-group"
+	conf.ZkList = []string{"127.0.0.1:2181"}
+	conf.ZkSessionTimeout = 6 * time.Second
+	cg, err := NewConsumerGroup(conf)
 	if err != nil {
 		t.Error(err)
 	}

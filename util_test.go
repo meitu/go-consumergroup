@@ -16,7 +16,7 @@ const (
 
 func TestUtilSliceRemoveDuplicates(t *testing.T) {
 	slice := []string{"hello", "world", "i", "have", "i", "i", "i", "world", "have"}
-	slice = SliceRemoveDuplicates(slice)
+	slice = sliceRemoveDuplicates(slice)
 	s := []string{"have", "i", "world", "hello"}
 	sort.Strings(s)
 	sort.Strings(slice)
