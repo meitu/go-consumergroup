@@ -94,7 +94,6 @@ func (cg *ConsumerGroup) SetLogger(logger Logger) {
 // JoinGroup would register ConsumerGroup, and rebalance would be triggered.
 // ConsumerGroup computes the partitions which should be consumed by consumer's num, and start fetching message.
 func (cg *ConsumerGroup) JoinGroup() error {
-
 	// exit when failed to register the consumer
 	err := cg.storage.registerConsumer(cg.name, cg.id, nil)
 	if err != nil && err != zk.ErrNodeExists {
@@ -154,14 +153,12 @@ CONSUME_TOPIC_LOOP:
 			cg.ExitGroup()
 			return
 		}
-
 		wg.Add(1)
 		go func() {
 			defer cg.callRecover()
 			defer wg.Done()
 			cg.autoReconnect(cg.storage.(*zkGroupStorage).sessionTimeout / 3)
 		}()
-
 		for _, topic := range cg.topicList {
 			wg.Add(1)
 			go func(topic string) {
@@ -172,7 +169,6 @@ CONSUME_TOPIC_LOOP:
 		}
 
 		cg.state = cgStart
-
 		select {
 		case <-cg.rebalanceTrigger:
 			cg.logger.Info("Trigger rebalance")
@@ -195,10 +191,7 @@ CONSUME_TOPIC_LOOP:
 func (cg *ConsumerGroup) consumeTopic(topic string) {
 	var wg sync.WaitGroup
 	cg.logger.Infof("Start to consume topic[%s]", topic)
-
-	defer func() {
-		cg.logger.Infof("Stop to consume topic[%s]", topic)
-	}()
+	defer cg.logger.Infof("Stop to consume topic[%s]", topic)
 
 	partitions, err := cg.assignPartitions(topic)
 	if err != nil {
@@ -206,7 +199,6 @@ func (cg *ConsumerGroup) consumeTopic(topic string) {
 		return
 	}
 	cg.logger.Infof("Topic[%s] Partitions %v are assigned to this consumer", topic, partitions)
-
 	for _, partition := range partitions {
 		wg.Add(1)
 		cg.logger.Infof("Start to consume Topic[%s] partition[%d]", topic, partition)
@@ -376,7 +368,6 @@ CONSUME_PARTITION_LOOP:
 			}
 		}
 	}
-
 	cg.logger.Infof("Topic[%s] partition[%d] consumer was stopped", topic, partition)
 }
 
@@ -419,7 +410,6 @@ func (cg *ConsumerGroup) watchRebalance() error {
 	if err != nil {
 		return err
 	}
-
 	go func() {
 		defer cg.callRecover()
 		cg.logger.Info("Rebalance checker was started")
@@ -431,7 +421,6 @@ func (cg *ConsumerGroup) watchRebalance() error {
 		}
 		cg.logger.Info("Rebalance checker was exited")
 	}()
-
 	return nil
 }
 
