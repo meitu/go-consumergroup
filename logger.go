@@ -1,6 +1,9 @@
 package consumergroup
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 // Constants defining log levels.
 const (
@@ -32,9 +35,25 @@ func newDefaultLogger(level int) *defaultLogger {
 	return logger
 }
 
+func (logger *defaultLogger) write(level int, args ...interface{}) {
+	levelStr := "unknown"
+	switch level {
+	case debugLevel:
+		levelStr = "DEBUG"
+	case infoLevel:
+		levelStr = "INFO"
+	case warnLevel:
+		levelStr = "WARN"
+	case errorLevel:
+		levelStr = "ERROR"
+	}
+	timeStr := time.Now().Format(time.RFC3339)
+	fmt.Println(append([]interface{}{timeStr, levelStr}, args...)...)
+}
+
 func (logger *defaultLogger) Debug(args ...interface{}) {
 	if logger.level <= debugLevel {
-		fmt.Println(append([]interface{}{"[DEBUG] "}, args...)...)
+		logger.write(debugLevel, args...)
 	}
 }
 
@@ -44,16 +63,17 @@ func (logger *defaultLogger) Debugf(format string, args ...interface{}) {
 
 func (logger *defaultLogger) Info(args ...interface{}) {
 	if logger.level <= infoLevel {
-		fmt.Println(append([]interface{}{"[INFO] "}, args...)...)
+		logger.write(infoLevel, args...)
 	}
 }
 
 func (logger *defaultLogger) Infof(format string, args ...interface{}) {
 	logger.Info(fmt.Sprintf(format, args...))
 }
+
 func (logger *defaultLogger) Warn(args ...interface{}) {
 	if logger.level <= warnLevel {
-		fmt.Println(append([]interface{}{"[WARN] "}, args...)...)
+		logger.write(warnLevel, args...)
 	}
 }
 
@@ -63,7 +83,7 @@ func (logger *defaultLogger) Warnf(format string, args ...interface{}) {
 
 func (logger *defaultLogger) Error(args ...interface{}) {
 	if logger.level <= errorLevel {
-		fmt.Println(append([]interface{}{"[ERROR] "}, args...)...)
+		logger.write(errorLevel, args...)
 	}
 }
 
