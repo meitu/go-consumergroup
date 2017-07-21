@@ -240,8 +240,32 @@ func (cg *ConsumerGroup) GetErrors(topic string) (<-chan *sarama.ConsumerError, 
 	return cg.errorChans[topic], nil
 }
 
-func (cg *ConsumerGroup) consumePartition(topic string, partition int32) {
+func (cg *ConsumerGroup) releasePartition(topic string, partition int32) error {
+	owner, err := cg.storage.getPartitionOwner(cg.name, topic, partition)
+	if err != nil {
+		return err
+	}
+	if cg.id == owner {
+		return cg.storage.releasePartition(cg.name, topic, partition)
+	}
+	return errors.New("partition wasn't ownered by this consumergroup")
+}
+
+func (cg *ConsumerGroup) claimPartition(topic string, partition int32) error {
 	var err error
+	for i := 0; i < cg.config.ClaimPartitionRetry; i++ {
+		if err = cg.storage.claimPartition(cg.name, topic, partition, cg.id); err != nil {
+			cg.logger.Warnf("Failed to claim topic[%s] partition[%d], err %s", topic, partition, err)
+		}
+		if err == nil {
+			break
+		}
+		time.Sleep(cg.config.ClaimPartitionRetryInterval)
+	}
+	return nil
+}
+
+func (cg *ConsumerGroup) consumePartition(topic string, partition int32) {
 	var consumer sarama.PartitionConsumer
 	var mutex sync.Mutex
 	var wg sync.WaitGroup
@@ -251,35 +275,23 @@ func (cg *ConsumerGroup) consumePartition(topic string, partition int32) {
 		return
 	default:
 	}
-
-	defer func() {
-		owner, err := cg.storage.getPartitionOwner(cg.name, topic, partition)
-		if err != nil {
-			cg.logger.Warnf("Failed to get topic[%s] partition[%d] owner, err %s", topic, partition, err)
-		}
-		if cg.id == owner {
-			err := cg.storage.releasePartition(cg.name, topic, partition)
-			if err != nil {
-				cg.logger.Warnf("Failed to release topic[%s] partition[%d], err %s", topic, partition, err)
-			}
-		}
-	}()
-
-	for i := 0; i < cg.config.ClaimPartitionRetry; i++ {
-		if err = cg.storage.claimPartition(cg.name, topic, partition, cg.id); err != nil {
-			cg.logger.Warnf("Failed to claim topic[%s] partition[%d], err %s", topic, partition, err)
-		}
-		if err == nil {
-			cg.logger.Infof("Claim topic[%s] partition[%d] success", topic, partition)
-			break
-		}
-		time.Sleep(cg.config.ClaimPartitionRetryInterval)
-	}
+	err := cg.claimPartition(topic, partition)
 	if err != nil {
-		cg.logger.Errorf("Failed to claim topic[%s] partition[%d] after %d retries", topic, partition, cg.config.ClaimPartitionRetry)
+		cg.logger.Errorf("Failed to claim topic[%s] partition[%d] with err %s, would give up",
+			topic, partition, err)
 		cg.ExitGroup()
 		return
 	}
+	cg.logger.Errorf("Claim topic[%s] partition[%d] success", topic, partition)
+	defer func() {
+		err = cg.releasePartition(topic, partition)
+		if err != nil {
+			cg.logger.Errorf("Failed to release topic[%s] partition[%d], err %s",
+				topic, partition, err)
+		} else {
+			cg.logger.Errorf("Release topic[%s] partition[%d] success", topic, partition)
+		}
+	}()
 
 	nextOffset, err := cg.storage.getOffset(cg.name, topic, partition)
 	if err != nil {
