@@ -252,17 +252,26 @@ func (cg *ConsumerGroup) releasePartition(topic string, partition int32) error {
 }
 
 func (cg *ConsumerGroup) claimPartition(topic string, partition int32) error {
-	var err error
-	for i := 0; i < cg.config.ClaimPartitionRetry; i++ {
-		if err = cg.storage.claimPartition(cg.name, topic, partition, cg.id); err != nil {
-			cg.logger.Warnf("Failed to claim topic[%s] partition[%d], err %s", topic, partition, err)
-		}
+	retry := 0
+	timer := time.NewTimer(cg.config.ClaimPartitionRetryInterval)
+	defer timer.Stop()
+	for { // retry until claim success or receive the stop signal
+		err := cg.storage.claimPartition(cg.name, topic, partition, cg.id)
 		if err == nil {
-			break
+			return nil
 		}
-		time.Sleep(cg.config.ClaimPartitionRetryInterval)
+		if retry%3 == 0 {
+			cg.logger.Errorf("Failed to claim topic[%s] partition[%d] after %d retires, err %s",
+				topic, partition, retry, err)
+		}
+		select {
+		case <-timer.C:
+			retry++
+			timer.Reset(cg.config.ClaimPartitionRetryInterval)
+		case <-cg.stopper:
+			return errors.New("stop signal was received when claim partition")
+		}
 	}
-	return nil
 }
 
 func (cg *ConsumerGroup) consumePartition(topic string, partition int32) {
@@ -270,14 +279,9 @@ func (cg *ConsumerGroup) consumePartition(topic string, partition int32) {
 	var mutex sync.Mutex
 	var wg sync.WaitGroup
 
-	select {
-	case <-cg.stopper:
-		return
-	default:
-	}
 	err := cg.claimPartition(topic, partition)
 	if err != nil {
-		cg.logger.Errorf("Failed to claim topic[%s] partition[%d] with err %s, would give up",
+		cg.logger.Errorf("Failed to claim topic[%s] partition[%d] and give up, err %s",
 			topic, partition, err)
 		cg.ExitGroup()
 		return
