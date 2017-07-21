@@ -275,7 +275,6 @@ func (cg *ConsumerGroup) claimPartition(topic string, partition int32) error {
 }
 
 func (cg *ConsumerGroup) consumePartition(topic string, partition int32) {
-	var consumer sarama.PartitionConsumer
 	var mutex sync.Mutex
 	var wg sync.WaitGroup
 
@@ -308,17 +307,16 @@ func (cg *ConsumerGroup) consumePartition(topic string, partition int32) {
 	}
 	cg.logger.Debugf("Get topic[%s] partition[%d] offset[%d] from offset storage", topic, partition, nextOffset)
 
-	consumer, err = cg.getPartitionConsumer(topic, partition, nextOffset)
+	consumer, err := cg.getPartitionConsumer(topic, partition, nextOffset)
 	if err != nil {
 		cg.logger.Errorf("Failed to get topic[%s] partition[%d] consumer, err %s", topic, partition, err)
 		cg.ExitGroup()
 		return
 	}
-	cg.logger.Infof("Topic[%s] partition[%d] Consumer has started", topic, partition)
 	defer consumer.Close()
+	cg.logger.Infof("Topic[%s] partition[%d] Consumer has started", topic, partition)
 
 	prevCommitOffset := nextOffset
-
 	if cg.config.OffsetAutoCommitEnable {
 		wg.Add(1)
 		go func() {
