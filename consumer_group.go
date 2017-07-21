@@ -412,14 +412,14 @@ func (cg *ConsumerGroup) watchRebalance() error {
 	}
 	go func() {
 		defer cg.callRecover()
-		cg.logger.Info("Rebalance checker was started")
+		cg.logger.Info("Rebalance watcher routine was started")
 		select {
 		case <-consumerListChange:
-			cg.logger.Info("Trigger rebalance while consumers was changed")
 			cg.rebalanceOnce.Do(cg.triggerRebalance)
+			cg.logger.Info("Trigger rebalance while consumers was changed")
 		case <-cg.stopper:
 		}
-		cg.logger.Info("Rebalance checker was exited")
+		cg.logger.Info("Rebalance watcher routine was exited")
 	}()
 	return nil
 }
