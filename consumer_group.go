@@ -425,7 +425,6 @@ func (cg *ConsumerGroup) watchRebalance() error {
 }
 
 func (cg *ConsumerGroup) assignPartitions(topic string) ([]int32, error) {
-	j := 0
 	partNum, err := cg.getPartitionNum(topic)
 	if err != nil || partNum == 0 {
 		return nil, err
@@ -440,11 +439,10 @@ func (cg *ConsumerGroup) assignPartitions(topic string) ([]int32, error) {
 	}
 	partitions := make([]int32, 0, partNum/consumerNum+1)
 	for i := 0; i < partNum; i++ {
-		id := consumerList[j%consumerNum]
+		id := consumerList[i%consumerNum]
 		if id == cg.id {
 			partitions = append(partitions, int32(i))
 		}
-		j++
 	}
 	return partitions, nil
 }
