@@ -1,8 +1,6 @@
 package consumergroup
 
-import (
-	"testing"
-)
+import "testing"
 
 func TestConfigValidate(t *testing.T) {
 	conf := NewConfig()
