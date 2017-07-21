@@ -129,6 +129,7 @@ func (cg *ConsumerGroup) callRecover() {
 func (cg *ConsumerGroup) consumeTopicList() {
 	var wg sync.WaitGroup
 
+	defer cg.callRecover()
 	defer func() {
 		cg.state = cgStopped
 		for _, topic := range cg.topicList {
@@ -140,8 +141,6 @@ func (cg *ConsumerGroup) consumeTopicList() {
 			cg.logger.Errorf("Failed to delete consumer from zookeeper, err %s", err)
 		}
 	}()
-
-	defer cg.callRecover()
 
 CONSUME_TOPIC_LOOP:
 	for {
