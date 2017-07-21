@@ -20,8 +20,8 @@ const (
 // ConsumerGroup consume message from Kafka with rebalancing supports
 type ConsumerGroup struct {
 	name           string
-	topicList      []string
 	storage        groupStorage
+	topicConsumers map[string]*topicConsumer
 	saramaConsumer sarama.Consumer
 
 	id               string
@@ -31,11 +31,8 @@ type ConsumerGroup struct {
 	stopOnce         *sync.Once
 	rebalanceOnce    *sync.Once
 
-	messageChans map[string]chan *sarama.ConsumerMessage
-	errorChans   map[string]chan *sarama.ConsumerError
-
-	logger *proxyLogger
 	config *Config
+	logger *proxyLogger
 }
 
 // NewConsumerGroup create the ConsumerGroup instance with config
@@ -53,24 +50,22 @@ func NewConsumerGroup(config *Config) (*ConsumerGroup, error) {
 	cg.config = config
 	cg.id = genConsumerID()
 	cg.name = config.GroupID
-	cg.topicList = config.TopicList
 	cg.stopOnce = new(sync.Once)
 	cg.stopper = make(chan struct{})
 	cg.rebalanceOnce = new(sync.Once)
 	cg.rebalanceTrigger = make(chan struct{})
+	prefix := fmt.Sprintf("[go-consumergroup %s]", cg.name)
+	cg.topicConsumers = make(map[string]*topicConsumer)
+	cg.logger = newProxyLogger(prefix, newDefaultLogger(infoLevel))
 	cg.storage = newZKGroupStorage(config.ZkList, config.ZkSessionTimeout)
-	cg.messageChans = make(map[string]chan *sarama.ConsumerMessage)
-	cg.errorChans = make(map[string]chan *sarama.ConsumerError)
-	for _, topic := range cg.topicList {
-		cg.messageChans[topic] = make(chan *sarama.ConsumerMessage)
-		cg.errorChans[topic] = make(chan *sarama.ConsumerError, config.ErrorChannelBufferSize)
-	}
+
 	err = cg.initSaramaConsumer()
 	if err != nil {
 		return nil, fmt.Errorf("init sarama consumer, as %s", err)
 	}
-	prefix := fmt.Sprintf("[go-consumergroup %s]", cg.name)
-	cg.logger = newProxyLogger(prefix, newDefaultLogger(infoLevel))
+	for _, topic := range config.TopicList {
+		cg.topicConsumers[topic] = newTopicConsumer(cg, topic)
+	}
 	return cg, nil
 }
 
@@ -99,7 +94,7 @@ func (cg *ConsumerGroup) JoinGroup() error {
 	if err != nil && err != zk.ErrNodeExists {
 		return err
 	}
-	go cg.consumeTopicList()
+	go cg.start()
 	return nil
 }
 
@@ -125,19 +120,19 @@ func (cg *ConsumerGroup) callRecover() {
 	}
 }
 
-func (cg *ConsumerGroup) consumeTopicList() {
+func (cg *ConsumerGroup) start() {
 	var wg sync.WaitGroup
 
 	defer cg.callRecover()
 	defer func() {
 		cg.state = cgStopped
-		for _, topic := range cg.topicList {
-			close(cg.messageChans[topic])
-			close(cg.errorChans[topic])
-		}
 		err := cg.storage.deleteConsumer(cg.name, cg.id)
 		if err != nil {
 			cg.logger.Errorf("Failed to delete consumer from zookeeper, err %s", err)
+		}
+		for _, tc := range cg.topicConsumers {
+			close(tc.messages)
+			close(tc.errors)
 		}
 	}()
 
@@ -159,16 +154,16 @@ CONSUME_TOPIC_LOOP:
 			defer wg.Done()
 			cg.autoReconnect(cg.storage.(*zkGroupStorage).sessionTimeout / 3)
 		}()
-		for _, topic := range cg.topicList {
+		for _, consumer := range cg.topicConsumers {
 			wg.Add(1)
-			go func(topic string) {
+			go func(tc *topicConsumer) {
 				defer cg.callRecover()
 				defer wg.Done()
-				cg.consumeTopic(topic)
-			}(topic)
+				tc.start()
+			}(consumer)
 		}
-
 		cg.state = cgStart
+
 		select {
 		case <-cg.rebalanceTrigger:
 			cg.logger.Info("Trigger rebalance")
@@ -180,36 +175,12 @@ CONSUME_TOPIC_LOOP:
 			cg.rebalanceTrigger = make(chan struct{})
 			continue CONSUME_TOPIC_LOOP
 		case <-cg.stopper: // triggered when ExitGroup() is called
-			cg.logger.Info("ConsumeGroup is stopping")
+			cg.logger.Info("ConsumerGroup is stopping")
 			wg.Wait()
 			cg.logger.Info("ConsumerGroup was stopped")
 			return
 		}
 	}
-}
-
-func (cg *ConsumerGroup) consumeTopic(topic string) {
-	var wg sync.WaitGroup
-	cg.logger.Infof("Start to consume topic[%s]", topic)
-	defer cg.logger.Infof("Stop to consume topic[%s]", topic)
-
-	partitions, err := cg.assignPartitions(topic)
-	if err != nil {
-		cg.logger.Errorf("Failed to assign partitions to topic[%s], err %s", topic, err)
-		return
-	}
-	cg.logger.Infof("Topic[%s] Partitions %v are assigned to this consumer", topic, partitions)
-	for _, partition := range partitions {
-		wg.Add(1)
-		cg.logger.Infof("Start to consume Topic[%s] partition[%d]", topic, partition)
-		go func(topic string, partition int32) {
-			defer cg.callRecover()
-			defer wg.Done()
-			cg.consumePartition(topic, partition)
-		}(topic, partition)
-	}
-
-	wg.Wait()
 }
 
 func (cg *ConsumerGroup) getPartitionConsumer(topic string, partition int32, nextOffset int64) (sarama.PartitionConsumer, error) {
@@ -226,177 +197,24 @@ func (cg *ConsumerGroup) getPartitionConsumer(topic string, partition int32, nex
 
 // GetMessages was used to get a unbuffered message's channel from specified topic
 func (cg *ConsumerGroup) GetMessages(topic string) (<-chan *sarama.ConsumerMessage, error) {
-	if cg.messageChans[topic] == nil {
-		return nil, errors.New("topic was not found")
+	if topicConsumer, ok := cg.topicConsumers[topic]; ok {
+		return topicConsumer.messages, nil
 	}
-	return cg.messageChans[topic], nil
+	return nil, errors.New("topic was not found")
 }
 
 // GetErrors was used to get a unbuffered error's channel from specified topic
 func (cg *ConsumerGroup) GetErrors(topic string) (<-chan *sarama.ConsumerError, error) {
-	if cg.errorChans[topic] == nil {
-		return nil, errors.New("topic was not found")
+	if topicConsumer, ok := cg.topicConsumers[topic]; ok {
+		return topicConsumer.errors, nil
 	}
-	return cg.errorChans[topic], nil
-}
-
-func (cg *ConsumerGroup) releasePartition(topic string, partition int32) error {
-	owner, err := cg.storage.getPartitionOwner(cg.name, topic, partition)
-	if err != nil {
-		return err
-	}
-	if cg.id == owner {
-		return cg.storage.releasePartition(cg.name, topic, partition)
-	}
-	return errors.New("partition wasn't ownered by this consumergroup")
-}
-
-func (cg *ConsumerGroup) claimPartition(topic string, partition int32) error {
-	retry := 0
-	timer := time.NewTimer(cg.config.ClaimPartitionRetryInterval)
-	defer timer.Stop()
-	for { // retry until claim success or receive the stop signal
-		err := cg.storage.claimPartition(cg.name, topic, partition, cg.id)
-		if err == nil {
-			return nil
-		}
-		if retry%3 == 0 {
-			cg.logger.Errorf("Failed to claim topic[%s] partition[%d] after %d retires, err %s",
-				topic, partition, retry, err)
-		}
-		select {
-		case <-timer.C:
-			retry++
-			timer.Reset(cg.config.ClaimPartitionRetryInterval)
-		case <-cg.stopper:
-			return errors.New("stop signal was received when claim partition")
-		}
-	}
-}
-
-func (cg *ConsumerGroup) consumePartition(topic string, partition int32) {
-	var mutex sync.Mutex
-	var wg sync.WaitGroup
-
-	err := cg.claimPartition(topic, partition)
-	if err != nil {
-		cg.logger.Errorf("Failed to claim topic[%s] partition[%d] and give up, err %s",
-			topic, partition, err)
-		cg.ExitGroup()
-		return
-	}
-	cg.logger.Errorf("Claim topic[%s] partition[%d] success", topic, partition)
-	defer func() {
-		err = cg.releasePartition(topic, partition)
-		if err != nil {
-			cg.logger.Errorf("Failed to release topic[%s] partition[%d], err %s",
-				topic, partition, err)
-		} else {
-			cg.logger.Errorf("Release topic[%s] partition[%d] success", topic, partition)
-		}
-	}()
-
-	nextOffset, err := cg.storage.getOffset(cg.name, topic, partition)
-	if err != nil {
-		cg.logger.Errorf("Failed to get topic[%s] partition[%d] offset, err %s", topic, partition, err)
-		cg.ExitGroup()
-		return
-	}
-	if nextOffset == -1 {
-		nextOffset = cg.config.OffsetAutoReset
-	}
-	cg.logger.Debugf("Get topic[%s] partition[%d] offset[%d] from offset storage", topic, partition, nextOffset)
-
-	consumer, err := cg.getPartitionConsumer(topic, partition, nextOffset)
-	if err != nil {
-		cg.logger.Errorf("Failed to get topic[%s] partition[%d] consumer, err %s", topic, partition, err)
-		cg.ExitGroup()
-		return
-	}
-	defer consumer.Close()
-	cg.logger.Infof("Topic[%s] partition[%d] Consumer has started", topic, partition)
-
-	prevCommitOffset := nextOffset
-	if cg.config.OffsetAutoCommitEnable {
-		wg.Add(1)
-		go func() {
-			defer cg.callRecover()
-			defer wg.Done()
-			timer := time.NewTimer(cg.config.OffsetAutoCommitInterval)
-			for {
-				select {
-				case <-cg.stopper:
-					return
-				case <-timer.C:
-					timer.Reset(cg.config.OffsetAutoCommitInterval)
-					mutex.Lock()
-					offset := nextOffset
-					mutex.Unlock()
-
-					if offset == prevCommitOffset {
-						break
-					}
-					err := cg.storage.commitOffset(cg.name, topic, partition, offset)
-					if err != nil {
-						cg.logger.Warnf("Failed to commit topic[%s] partition[%d] offset, err %s", topic, partition, err)
-					} else {
-						cg.logger.Debugf("Commit topic[%s] partition[%d] offset[%d] to storage", topic, partition, offset)
-						prevCommitOffset = offset
-					}
-				}
-			}
-		}()
-	}
-
-	messageChan := cg.messageChans[topic]
-	errorChan := cg.errorChans[topic]
-
-CONSUME_PARTITION_LOOP:
-	for {
-		select {
-		case <-cg.stopper:
-			break CONSUME_PARTITION_LOOP
-		case error1 := <-consumer.Errors():
-			errorChan <- error1
-		case message := <-consumer.Messages():
-			select {
-			case messageChan <- message:
-				mutex.Lock()
-				nextOffset = message.Offset + 1
-				mutex.Unlock()
-			case <-cg.stopper:
-				break CONSUME_PARTITION_LOOP
-			}
-		}
-	}
-
-	wg.Wait()
-
-	if cg.config.OffsetAutoCommitEnable {
-		if nextOffset != prevCommitOffset {
-			err = cg.storage.commitOffset(cg.name, topic, partition, nextOffset)
-			if err != nil {
-				cg.logger.Errorf("Failed to Commit topic[%s] partition[%d] offset[%d], err %s", topic, partition, nextOffset, err)
-			} else {
-				cg.logger.Debugf("Commit topic[%s] partition[%d] offset[%d] to storage", topic, partition, nextOffset)
-			}
-		}
-	}
-	cg.logger.Infof("Topic[%s] partition[%d] consumer was stopped", topic, partition)
-}
-
-func (cg *ConsumerGroup) getPartitionNum(topic string) (int, error) {
-	partitions, err := cg.saramaConsumer.Partitions(topic)
-	if err != nil {
-		return 0, err
-	}
-	return len(partitions), nil
+	return nil, errors.New("topic was not found")
 }
 
 func (cg *ConsumerGroup) autoReconnect(interval time.Duration) {
 	timer := time.NewTimer(interval)
-	cg.logger.Info("The auto reconnect consumer goroutine was started")
-	defer cg.logger.Info("The auto reconnect consumer goroutine was stopped")
+	cg.logger.Info("The auto-reconnect consumer thread was started")
+	defer cg.logger.Info("The auto-reconnect consumer thread was stopped")
 	for {
 		select {
 		case <-cg.stopper:
@@ -426,39 +244,16 @@ func (cg *ConsumerGroup) watchRebalance() error {
 	}
 	go func() {
 		defer cg.callRecover()
-		cg.logger.Info("Rebalance watcher routine was started")
+		cg.logger.Info("Rebalance watcher thread was started")
 		select {
 		case <-consumerListChange:
 			cg.rebalanceOnce.Do(cg.triggerRebalance)
 			cg.logger.Info("Trigger rebalance while consumers was changed")
 		case <-cg.stopper:
 		}
-		cg.logger.Info("Rebalance watcher routine was exited")
+		cg.logger.Info("Rebalance watcher thread was exited")
 	}()
 	return nil
-}
-
-func (cg *ConsumerGroup) assignPartitions(topic string) ([]int32, error) {
-	partNum, err := cg.getPartitionNum(topic)
-	if err != nil || partNum == 0 {
-		return nil, err
-	}
-	consumerList, err := cg.storage.getConsumerList(cg.name)
-	if err != nil {
-		return nil, err
-	}
-	consumerNum := len(consumerList)
-	if consumerNum == 0 {
-		return nil, errors.New("no consumer was found")
-	}
-	partitions := make([]int32, 0, partNum/consumerNum+1)
-	for i := 0; i < partNum; i++ {
-		id := consumerList[i%consumerNum]
-		if id == cg.id {
-			partitions = append(partitions, int32(i))
-		}
-	}
-	return partitions, nil
 }
 
 // CommitOffset is used to commit offset when auto commit was disabled.
