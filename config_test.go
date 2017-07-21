@@ -18,16 +18,13 @@ func TestConfigValidate(t *testing.T) {
 		t.Fatal("config validate is expected")
 	}
 	conf.GroupID = "go-test-group"
-	if err := conf.validate(); err == nil {
-		t.Fatal("config invalidate is expected")
+	if err := conf.validate(); err != nil {
+		t.Fatalf("validate is expected, but got error %s", err)
 	}
 	if len(conf.TopicList) != 3 {
 		t.Fatal("config validate should remove duplicate topics")
 	}
 	if len(conf.ZkList) != 1 {
 		t.Fatal("config validate should remove duplicate zk addresses")
-	}
-	if err := conf.validate(); err != nil {
-		t.Fatalf("validate is expected, but got error %s", err)
 	}
 }

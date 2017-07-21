@@ -11,17 +11,13 @@ import (
 	"github.com/samuel/go-zookeeper/zk"
 )
 
-// Constants defining consumer group's possible states.
 const (
 	cgInit = iota
 	cgStart
 	cgStopped
 )
 
-type topicOffset map[int32]int64
-
-// ConsumerGroup process Kafka messages from brokers. It supports group
-// and rebalance.
+// ConsumerGroup consume message from Kafka with rebalancing supports
 type ConsumerGroup struct {
 	name           string
 	topicList      []string
@@ -35,15 +31,14 @@ type ConsumerGroup struct {
 	stopOnce         *sync.Once
 	rebalanceOnce    *sync.Once
 
-	nextMessage map[string]chan *sarama.ConsumerMessage
-	topicErrors map[string]chan *sarama.ConsumerError
+	messageChans map[string]chan *sarama.ConsumerMessage
+	errorChans   map[string]chan *sarama.ConsumerError
 
 	logger *proxyLogger
 	config *Config
 }
 
-// NewConsumerGroup creates a new consumer group instance using the given
-// group storage and config.
+// NewConsumerGroup create the ConsumerGroup instance with config
 func NewConsumerGroup(config *Config) (*ConsumerGroup, error) {
 	if config == nil {
 		return nil, errors.New("config can't be empty")
@@ -54,49 +49,53 @@ func NewConsumerGroup(config *Config) (*ConsumerGroup, error) {
 	}
 
 	cg := new(ConsumerGroup)
+	cg.state = cgInit
+	cg.config = config
+	cg.id = genConsumerID()
 	cg.name = config.GroupID
 	cg.topicList = config.TopicList
-	cg.storage = newZKGroupStorage(config.ZkList, config.ZkSessionTimeout)
-	brokerList, err := cg.storage.getBrokerList()
-	if err != nil {
-		return nil, fmt.Errorf("get brokerList err: %s", err)
-	}
-	if len(brokerList) == 0 {
-		return nil, errors.New("no broker alive")
-	}
-
-	if cg.saramaConsumer, err = sarama.NewConsumer(brokerList, config.SaramaConfig); err != nil {
-		return nil, fmt.Errorf("sarama consumer initialize failed, because %s", err)
-	}
-
-	cg.state = cgInit
-	cg.id = genConsumerID()
-	cg.stopper = make(chan struct{})
-	cg.rebalanceTrigger = make(chan struct{})
-	cg.rebalanceOnce = new(sync.Once)
 	cg.stopOnce = new(sync.Once)
-	cg.nextMessage = make(map[string]chan *sarama.ConsumerMessage)
-	cg.topicErrors = make(map[string]chan *sarama.ConsumerError)
+	cg.stopper = make(chan struct{})
+	cg.rebalanceOnce = new(sync.Once)
+	cg.rebalanceTrigger = make(chan struct{})
+	cg.storage = newZKGroupStorage(config.ZkList, config.ZkSessionTimeout)
+	cg.messageChans = make(map[string]chan *sarama.ConsumerMessage)
+	cg.errorChans = make(map[string]chan *sarama.ConsumerError)
 	for _, topic := range cg.topicList {
-		cg.nextMessage[topic] = make(chan *sarama.ConsumerMessage)
-		cg.topicErrors[topic] = make(chan *sarama.ConsumerError, config.ErrorChannelBufferSize)
+		cg.messageChans[topic] = make(chan *sarama.ConsumerMessage)
+		cg.errorChans[topic] = make(chan *sarama.ConsumerError, config.ErrorChannelBufferSize)
+	}
+	err = cg.initSaramaConsumer()
+	if err != nil {
+		return nil, fmt.Errorf("init sarama consumer, as %s", err)
 	}
 	prefix := fmt.Sprintf("[go-consumergroup %s]", cg.name)
 	cg.logger = newProxyLogger(prefix, newDefaultLogger(infoLevel))
-	cg.config = config
 	return cg, nil
 }
 
-// SetLogger sets the logger and you need to implement the Logger interface first.
+func (cg *ConsumerGroup) initSaramaConsumer() error {
+	brokerList, err := cg.storage.getBrokerList()
+	if err != nil {
+		return err
+	}
+	if len(brokerList) == 0 {
+		return errors.New("no broker alive")
+	}
+	cg.saramaConsumer, err = sarama.NewConsumer(brokerList, cg.config.SaramaConfig)
+	return err
+}
+
+// SetLogger allow user to set user's logger, or defaultLogger would print to stdout.
 func (cg *ConsumerGroup) SetLogger(logger Logger) {
 	cg.logger.targetLogger = logger
 }
 
-// JoinGroup registers a consumer to the consumer group and starts to
-// process messages from the topic list.
+// JoinGroup would register ConsumerGroup, and rebalance would be triggered.
+// ConsumerGroup computes the partitions which should be consumed by consumer's num, and start fetching message.
 func (cg *ConsumerGroup) JoinGroup() error {
 
-	// the program exits if the consumer fails to register
+	// exit when failed to register the consumer
 	err := cg.storage.registerConsumer(cg.name, cg.id, nil)
 	if err != nil && err != zk.ErrNodeExists {
 		return err
@@ -105,13 +104,13 @@ func (cg *ConsumerGroup) JoinGroup() error {
 	return nil
 }
 
-// ExitGroup close cg.stopper to notify consumer group stop consuming topic
-// list.
+// ExitGroup would unregister ConsumerGroup, and rebalance would be triggered.
+// The partitions which consumed by this ConsumerGroup would be assigned to others.
 func (cg *ConsumerGroup) ExitGroup() {
 	cg.stopOnce.Do(func() { close(cg.stopper) })
 }
 
-// IsStopped returns true or false means if consumer group is stopped or not.
+// IsStopped return whether the ConsumerGroup was stopped or not.
 func (cg *ConsumerGroup) IsStopped() bool {
 	return cg.state == cgStopped
 }
@@ -133,8 +132,8 @@ func (cg *ConsumerGroup) consumeTopicList() {
 	defer func() {
 		cg.state = cgStopped
 		for _, topic := range cg.topicList {
-			close(cg.nextMessage[topic])
-			close(cg.topicErrors[topic])
+			close(cg.messageChans[topic])
+			close(cg.errorChans[topic])
 		}
 		err := cg.storage.deleteConsumer(cg.name, cg.id)
 		if err != nil {
@@ -150,7 +149,7 @@ CONSUME_TOPIC_LOOP:
 		cg.rebalanceOnce = new(sync.Once)
 		cg.stopOnce = new(sync.Once)
 
-		err := cg.checkRebalance()
+		err := cg.watchRebalance()
 		if err != nil {
 			cg.logger.Errorf("Failed to watch rebalance, err %s", err)
 			cg.ExitGroup()
@@ -175,15 +174,13 @@ CONSUME_TOPIC_LOOP:
 
 		cg.state = cgStart
 
-		// waiting for restart or rebalance
 		select {
 		case <-cg.rebalanceTrigger:
 			cg.logger.Info("Trigger rebalance")
 			cg.ExitGroup()
-			// stopper will be closed to notify partition consumers to
-			// stop consuming when rebalance is triggered, and rebalanceTrigger
-			// will also be closed to restart the consume topic loop in the meantime.
 			wg.Wait()
+			// The stopper channel was used to notify partition's consumer to stop consuming when rebalance is triggered.
+			// So we should reinit when rebalace was triggered, as it would be closed.
 			cg.stopper = make(chan struct{})
 			cg.rebalanceTrigger = make(chan struct{})
 			continue CONSUME_TOPIC_LOOP
@@ -204,7 +201,7 @@ func (cg *ConsumerGroup) consumeTopic(topic string) {
 		cg.logger.Infof("Stop to consume topic[%s]", topic)
 	}()
 
-	partitions, err := cg.assignPartitionToConsumer(topic)
+	partitions, err := cg.assignPartitions(topic)
 	if err != nil {
 		cg.logger.Errorf("Failed to assign partitions to topic[%s], err %s", topic, err)
 		return
@@ -236,22 +233,20 @@ func (cg *ConsumerGroup) getPartitionConsumer(topic string, partition int32, nex
 	return consumer, nil
 }
 
-// GetTopicNextMessageChannel returns a unbuffered channel from which to get
-// messages of a specified topic.
-func (cg *ConsumerGroup) GetTopicNextMessageChannel(topic string) (<-chan *sarama.ConsumerMessage, error) {
-	if cg.nextMessage[topic] == nil {
+// GetMessages was used to get a unbuffered message's channel from specified topic
+func (cg *ConsumerGroup) GetMessages(topic string) (<-chan *sarama.ConsumerMessage, error) {
+	if cg.messageChans[topic] == nil {
 		return nil, errors.New("topic was not found")
 	}
-	return cg.nextMessage[topic], nil
+	return cg.messageChans[topic], nil
 }
 
-// GetTopicErrorsChannel returns a buffered channel from which to get error
-// messages of a specified topic.
-func (cg *ConsumerGroup) GetTopicErrorsChannel(topic string) (<-chan *sarama.ConsumerError, error) {
-	if cg.topicErrors[topic] == nil {
+// GetErrors was used to get a unbuffered error's channel from specified topic
+func (cg *ConsumerGroup) GetErrors(topic string) (<-chan *sarama.ConsumerError, error) {
+	if cg.errorChans[topic] == nil {
 		return nil, errors.New("topic was not found")
 	}
-	return cg.topicErrors[topic], nil
+	return cg.errorChans[topic], nil
 }
 
 func (cg *ConsumerGroup) consumePartition(topic string, partition int32) {
@@ -348,22 +343,19 @@ func (cg *ConsumerGroup) consumePartition(topic string, partition int32) {
 		}()
 	}
 
-	nextMessage := cg.nextMessage[topic]
-	errors := cg.topicErrors[topic]
+	messageChan := cg.messageChans[topic]
+	errorChan := cg.errorChans[topic]
 
 CONSUME_PARTITION_LOOP:
 	for {
 		select {
 		case <-cg.stopper:
 			break CONSUME_PARTITION_LOOP
-
 		case error1 := <-consumer.Errors():
-			errors <- error1
-			//sends error messages to the error channel
-
+			errorChan <- error1
 		case message := <-consumer.Messages():
 			select {
-			case nextMessage <- message:
+			case messageChan <- message:
 				mutex.Lock()
 				nextOffset = message.Offset + 1
 				mutex.Unlock()
@@ -423,7 +415,7 @@ func (cg *ConsumerGroup) autoReconnect(interval time.Duration) {
 	}
 }
 
-func (cg *ConsumerGroup) checkRebalance() error {
+func (cg *ConsumerGroup) watchRebalance() error {
 	consumerListChange, err := cg.storage.watchConsumerList(cg.name)
 	if err != nil {
 		return err
@@ -444,7 +436,7 @@ func (cg *ConsumerGroup) checkRebalance() error {
 	return nil
 }
 
-func (cg *ConsumerGroup) assignPartitionToConsumer(topic string) ([]int32, error) {
+func (cg *ConsumerGroup) assignPartitions(topic string) ([]int32, error) {
 	j := 0
 	partNum, err := cg.getPartitionNum(topic)
 	if err != nil || partNum == 0 {
@@ -469,6 +461,10 @@ func (cg *ConsumerGroup) assignPartitionToConsumer(topic string) ([]int32, error
 	return partitions, nil
 }
 
+// CommitOffset is used to commit offset when auto commit was disabled.
 func (cg *ConsumerGroup) CommitOffset(topic string, partition int32, offset int64) error {
+	if cg.config.OffsetAutoCommitEnable {
+		return errors.New("commit offset take effect when offset auto commit was disabled")
+	}
 	return cg.storage.commitOffset(cg.name, topic, partition, offset)
 }

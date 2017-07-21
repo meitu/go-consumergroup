@@ -7,26 +7,32 @@ import (
 	"github.com/Shopify/sarama"
 )
 
-// Config is used to pass configuration options to consumer groups. Items can
-// be modified directly.
 type Config struct {
-	ZkList           []string
+	// ZkList is required, zookeeper address's list
+	ZkList []string
+	// Zookeeper session timeout, default is 6s
 	ZkSessionTimeout time.Duration
-	GroupID          string
-	TopicList        []string
-
-	SaramaConfig           *sarama.Config
+	// GroupID is required, identifer to determin which ConsumerGroup would be joined
+	GroupID string
+	// TopicList is required, topics that ConsumerGroup would be consumed
+	TopicList []string
+	// Just export Sarama Config
+	SaramaConfig *sarama.Config
+	// Size of error channel, default is 1024
 	ErrorChannelBufferSize int
-
-	OffsetAutoCommitEnable   bool
+	// Whether auto commit the offset or not, default is true
+	OffsetAutoCommitEnable bool
+	// Offset auto commit interval, default is 10s
 	OffsetAutoCommitInterval time.Duration
-	OffsetAutoReset          int64
-
-	ClaimPartitionRetry         int
+	// Where to fetch messages when offset was not found, default is newest
+	OffsetAutoReset int64
+	// Claim the partition util ClaimPartitionRetry retires
+	ClaimPartitionRetry int
+	// Retry interval when fail to clain the partition
 	ClaimPartitionRetryInterval time.Duration
 }
 
-// NewConfig creates a new Config instance.
+// NewConfig return the new config with default value.
 func NewConfig() *Config {
 	config := new(Config)
 	config.SaramaConfig = sarama.NewConfig()
