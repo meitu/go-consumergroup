@@ -52,12 +52,12 @@ func main() {
 		fmt.Println("Failed to join group, err ", err.Error())
 		os.Exit(1)
 	}
-	messages, err := cg.GetMessages("test")
-	if err != nil {
-		fmt.Println("Failed to get message channel, err", err.Error())
-	}
-	for message := range messages {
-		fmt.Println(string(message.Value), message.Offset)
-		time.Sleep(500 * time.Millisecond)
+	if messages, ok := cg.GetMessages("test"); ok {
+		for message := range messages {
+			fmt.Println(string(message.Value), message.Offset)
+			time.Sleep(500 * time.Millisecond)
+		}
+	} else {
+		fmt.Println("Topic was not found in consumergroup")
 	}
 }

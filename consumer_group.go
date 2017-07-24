@@ -196,19 +196,19 @@ func (cg *ConsumerGroup) getPartitionConsumer(topic string, partition int32, nex
 }
 
 // GetMessages was used to get a unbuffered message's channel from specified topic
-func (cg *ConsumerGroup) GetMessages(topic string) (<-chan *sarama.ConsumerMessage, error) {
+func (cg *ConsumerGroup) GetMessages(topic string) (<-chan *sarama.ConsumerMessage, bool) {
 	if topicConsumer, ok := cg.topicConsumers[topic]; ok {
-		return topicConsumer.messages, nil
+		return topicConsumer.messages, true
 	}
-	return nil, errors.New("topic was not found")
+	return nil, false
 }
 
 // GetErrors was used to get a unbuffered error's channel from specified topic
-func (cg *ConsumerGroup) GetErrors(topic string) (<-chan *sarama.ConsumerError, error) {
+func (cg *ConsumerGroup) GetErrors(topic string) (<-chan *sarama.ConsumerError, bool) {
 	if topicConsumer, ok := cg.topicConsumers[topic]; ok {
-		return topicConsumer.errors, nil
+		return topicConsumer.errors, true
 	}
-	return nil, errors.New("topic was not found")
+	return nil, false
 }
 
 func (cg *ConsumerGroup) autoReconnect(interval time.Duration) {
