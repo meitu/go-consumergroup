@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/Shopify/sarama"
@@ -192,7 +191,7 @@ func (pc *partitionConsumer) autoCommitOffset() {
 
 func (pc *partitionConsumer) commitOffset() error {
 	cg := pc.owner.owner
-	offset := atomic.LoadInt64(&pc.offset)
+	offset := pc.offset
 	if pc.prevOffset == offset {
 		return nil
 	}
