@@ -1,0 +1,9 @@
+VERSION 0.1.0
+* init
+
+VERSION 0.2.0
+* Refactor consumer group log message
+* Add more annotation 
+* Refactor GetTopicNextMessageChannel => GetMessages, GetTopicErrorsChannel
+=> GetErrors
+* Refactor consumer-group into topic-consumer and partition-consumer
