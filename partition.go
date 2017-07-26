@@ -2,8 +2,8 @@ package consumergroup
 
 import (
 	"errors"
+	"fmt"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/Shopify/sarama"
@@ -111,27 +111,28 @@ func (pc *partitionConsumer) loadOffsetFromZk() error {
 }
 
 func (pc *partitionConsumer) claim() error {
-	retry := 0
 	cg := pc.owner.owner
 	timer := time.NewTimer(cg.config.ClaimPartitionRetryInterval)
 	defer timer.Stop()
-	for { // retry until claim success or receive the stop signal
+	retry := cg.config.ClaimPartitionRetryTimes
+	// Claim partition would retry until success
+	for i := 0; i < retry+1 || retry <= 0; i++ {
 		err := cg.storage.claimPartition(pc.group, pc.topic, pc.partition, cg.id)
 		if err == nil {
 			return nil
 		}
-		if retry%3 == 0 {
+		if i%3 == 0 || retry > 0 {
 			cg.logger.Errorf("Failed to claim topic[%s] partition[%d] after %d retires, err %s",
-				pc.topic, pc.partition, retry, err)
+				pc.topic, pc.partition, i, err)
 		}
 		select {
 		case <-timer.C:
-			retry++
 			timer.Reset(cg.config.ClaimPartitionRetryInterval)
 		case <-cg.stopper:
 			return errors.New("stop signal was received when claim partition")
 		}
 	}
+	return fmt.Errorf("claim partition err, after %d retries", retry)
 }
 
 func (pc *partitionConsumer) release() error {
@@ -190,7 +191,7 @@ func (pc *partitionConsumer) autoCommitOffset() {
 
 func (pc *partitionConsumer) commitOffset() error {
 	cg := pc.owner.owner
-	offset := atomic.LoadInt64(&pc.offset)
+	offset := pc.offset
 	if pc.prevOffset == offset {
 		return nil
 	}
