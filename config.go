@@ -26,6 +26,9 @@ type Config struct {
 	OffsetAutoCommitInterval time.Duration
 	// Where to fetch messages when offset was not found, default is newest
 	OffsetAutoReset int64
+	// Claim the partition would give up after ClaimPartitionRetryTimes(>0) retires,
+	// ClaimPartitionRetryTimes <= 0 would retry until success or receive stop signal
+	ClaimPartitionRetryTimes int
 	// Retry interval when fail to clain the partition
 	ClaimPartitionRetryInterval time.Duration
 }
@@ -38,6 +41,7 @@ func NewConfig() *Config {
 	config.OffsetAutoCommitEnable = true
 	config.OffsetAutoCommitInterval = 10 * time.Second
 	config.OffsetAutoReset = sarama.OffsetNewest
+	config.ClaimPartitionRetryTimes = 10
 	config.ClaimPartitionRetryInterval = 3 * time.Second
 	return config
 }
