@@ -83,7 +83,7 @@ func (pc *partitionConsumer) start() {
 	if cg.config.OffsetAutoCommitEnable {
 		err = pc.commitOffset()
 		if err != nil {
-			cg.logger.Errorf("Failed to commit topic[%s] partition[%d] offset",
+			cg.logger.Errorf("Failed to commit topic[%s] partition[%d] offset[%d]",
 				pc.topic, pc.partition, pc.offset)
 		}
 		wg.Wait() // Wait for auto-commit-offset thread
