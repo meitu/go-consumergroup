@@ -40,4 +40,4 @@ endif
 
 .PHONY: test
 test:
-	go test -race $(PKGS)
+	cd tests && sh test.sh

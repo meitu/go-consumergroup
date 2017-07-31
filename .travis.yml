@@ -1,14 +1,27 @@
+sudo: required
 language: go
 dist: trusty
-sudo: false
 
 go:
   - 1.6
   - 1.7.3
+  - 1.8
 
-before_install:
-  - go get github.com/Shopify/sarama
-  - go get github.com/samuel/go-zookeeper/zk
+services:
+  - docker
+
+env:
+  - DOCKER_COMPOSE_VERSION=1.14.0
 
 install:
+  - sudo rm /usr/local/bin/docker-compose
+  - curl -L https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-`uname -s`-`uname -m` > docker-compose
+  - chmod +x docker-compose
+  - sudo mv docker-compose /usr/local/bin
+  - go get github.com/Shopify/sarama
+  - go get github.com/samuel/go-zookeeper/zk
+  - go get github.com/git-hulk/go-consumergroup
+  - cp -r $HOME/gopath/src/github.com/git-hulk/go-consumergroup $HOME/gopath/src/go-consumergroup
   - make build
+
+script: make test 
