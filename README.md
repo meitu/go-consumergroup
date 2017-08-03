@@ -16,3 +16,11 @@ Go-consumergroup is a kafka consumer library written in golang with group and re
 
 * API documentation and examples are available via [godoc](https://godoc.org/github.com/meitu/go-consumergroup).
 * The example directory contains more elaborate [example](example/example.go) applications.
+
+## Run Tests
+
+```shell
+$ make test
+```
+
+*** NOTE: *** `docker-compse` is required to run tests
