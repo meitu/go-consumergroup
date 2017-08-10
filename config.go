@@ -7,6 +7,7 @@ import (
 	"github.com/Shopify/sarama"
 )
 
+// Config is used to pass multiple configuration options to ConsumerGroup's constructors
 type Config struct {
 	// ZkList is required, zookeeper address's list
 	ZkList []string

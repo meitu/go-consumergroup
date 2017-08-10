@@ -56,6 +56,8 @@ func (tc *topicConsumer) start() {
 }
 
 func (tc *topicConsumer) assignPartitions() ([]int32, error) {
+	var partitions []int32
+
 	cg := tc.owner
 	partNum, err := tc.getPartitionNum()
 	if err != nil || partNum == 0 {
@@ -69,7 +71,6 @@ func (tc *topicConsumer) assignPartitions() ([]int32, error) {
 	if consumerNum == 0 {
 		return nil, errors.New("no consumer was found")
 	}
-	partitions := make([]int32, 0)
 	for i := int32(0); i < partNum; i++ {
 		id := consumerList[i%int32(consumerNum)]
 		if id == cg.id {

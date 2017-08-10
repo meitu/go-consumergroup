@@ -19,9 +19,12 @@ install:
   - chmod +x docker-compose
   - sudo mv docker-compose /usr/local/bin
   - go get github.com/Shopify/sarama
+  - go get -u github.com/golang/lint/golint
   - go get github.com/samuel/go-zookeeper/zk
   - go get github.com/git-hulk/go-consumergroup
   - cp -r $HOME/gopath/src/github.com/git-hulk/go-consumergroup $HOME/gopath/src/go-consumergroup
   - make build
 
-script: make test 
+script:
+    - make test
+    - make lint
