@@ -162,7 +162,7 @@ PARTITION_CONSUMER_LOOP:
 		case message := <-pc.consumer.Messages():
 			select {
 			case messageChan <- message:
-				pc.offset++
+				pc.offset = message.Offset + 1
 			case <-cg.stopper:
 				break PARTITION_CONSUMER_LOOP
 			}
