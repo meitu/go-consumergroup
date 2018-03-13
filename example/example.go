@@ -59,7 +59,7 @@ func main() {
 		if topicErrChan, ok := cg.GetErrors("test"); ok {
 			for err := range topicErrChan {
 				if err != nil {
-					fmt.Println("toipic %s got err, %s", err)
+					fmt.Printf("Toipic %s got err, %s\n", topic, err)
 				}
 			}
 		}
