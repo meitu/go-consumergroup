@@ -44,6 +44,7 @@ func NewConfig() *Config {
 	config.OffsetAutoReset = sarama.OffsetNewest
 	config.ClaimPartitionRetryTimes = 10
 	config.ClaimPartitionRetryInterval = 3 * time.Second
+	config.SaramaConfig.Consumer.Return.Errors = true
 	return config
 }
 

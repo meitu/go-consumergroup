@@ -160,6 +160,11 @@ PARTITION_CONSUMER_LOOP:
 		case err := <-pc.consumer.Errors():
 			errorChan <- err
 		case message := <-pc.consumer.Messages():
+			if message == nil {
+				cg.logger.Errorf("Sarama partition consumer encounter error, the consumer would be exited")
+				close(cg.stopper)
+				break PARTITION_CONSUMER_LOOP
+			}
 			select {
 			case messageChan <- message:
 				pc.offset = message.Offset + 1
