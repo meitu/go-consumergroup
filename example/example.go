@@ -37,7 +37,8 @@ func main() {
 	conf := consumergroup.NewConfig()
 	conf.ZkList = []string{"127.0.0.1:2181"}
 	conf.ZkSessionTimeout = 6 * time.Second
-	conf.TopicList = []string{"test"}
+	topic := "test"
+	conf.TopicList = []string{topic}
 	conf.GroupID = "go-test-group-id"
 
 	cg, err := consumergroup.NewConsumerGroup(conf)
@@ -56,7 +57,7 @@ func main() {
 
 	// Retrieve the error and log
 	go func() {
-		if topicErrChan, ok := cg.GetErrors("test"); ok {
+		if topicErrChan, ok := cg.GetErrors(topic); ok {
 			for err := range topicErrChan {
 				if err != nil {
 					fmt.Printf("Toipic %s got err, %s\n", topic, err)
@@ -65,7 +66,7 @@ func main() {
 		}
 	}()
 
-	if msgChan, ok := cg.GetMessages("test"); ok {
+	if msgChan, ok := cg.GetMessages(topic); ok {
 		for message := range msgChan {
 			fmt.Println(string(message.Value), message.Offset)
 			time.Sleep(500 * time.Millisecond)
