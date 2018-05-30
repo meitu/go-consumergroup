@@ -2,12 +2,13 @@ package main
 
 import (
 	"fmt"
-	consumergroup "go-consumergroup"
 	"testing"
 	"time"
 
+	consumergroup "github.com/meitu/go-consumergroup"
+
 	"github.com/Shopify/sarama"
-	"github.com/samuel/go-zookeeper/zk"
+	"github.com/meitu/zk_wrapper"
 )
 
 func TestRebalance(t *testing.T) {
@@ -30,7 +31,7 @@ func TestRebalance(t *testing.T) {
 		t.Errorf("Failed to get partitons, err %s", err)
 	}
 	owners := make([]string, 0)
-	zkCli, _, err := zk.Connect(zookeepers, 6*time.Second)
+	zkCli, _, err := zk_wrapper.Connect(zookeepers, 6*time.Second)
 	if err != nil {
 		t.Fatal("Failed to connect zookeeper")
 	}

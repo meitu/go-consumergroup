@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/Shopify/sarama"
-	"github.com/samuel/go-zookeeper/zk"
+	"github.com/meitu/zk_wrapper"
 )
 
 func TestOffsetAutoCommit(t *testing.T) {
@@ -28,7 +28,7 @@ func TestOffsetAutoCommit(t *testing.T) {
 	}(messages)
 	time.Sleep(200 * time.Millisecond) // offset auto commit interval is 100ms
 
-	zkCli, _, err := zk.Connect(zookeepers, 6*time.Second)
+	zkCli, _, err := zk_wrapper.Connect(zookeepers, 6*time.Second)
 	if err != nil {
 		t.Fatal("Failed to connect zookeeper")
 	}
@@ -38,7 +38,7 @@ func TestOffsetAutoCommit(t *testing.T) {
 		t.Fatalf("Failed to get partition offset, err %s", err)
 	}
 	offset, _ := strconv.Atoi(string(data))
-	if offset+1 != count {
+	if offset != count {
 		t.Errorf("Auto commit offset expect %d, but got %d", count, offset)
 	}
 }

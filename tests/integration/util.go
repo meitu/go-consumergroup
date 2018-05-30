@@ -2,9 +2,10 @@ package main
 
 import (
 	"fmt"
-	consumergroup "go-consumergroup"
 	"math/rand"
 	"time"
+
+	consumergroup "github.com/meitu/go-consumergroup"
 
 	"github.com/Shopify/sarama"
 )
