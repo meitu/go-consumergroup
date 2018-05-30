@@ -18,11 +18,9 @@ install:
   - curl -L https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-`uname -s`-`uname -m` > docker-compose
   - chmod +x docker-compose
   - sudo mv docker-compose /usr/local/bin
-  - go get github.com/Shopify/sarama
   - go get -u github.com/golang/lint/golint
-  - go get github.com/samuel/go-zookeeper/zk
-  - go get github.com/git-hulk/go-consumergroup
-  - cp -r $HOME/gopath/src/github.com/git-hulk/go-consumergroup $HOME/gopath/src/go-consumergroup
+  - curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
+  - dep ensure
   - make build
 
 script:
