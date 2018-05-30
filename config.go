@@ -9,6 +9,7 @@ import (
 
 // Config is used to pass multiple configuration options to ConsumerGroup's constructors
 type Config struct {
+	Chroot string
 	// ZkList is required, zookeeper address's list
 	ZkList []string
 	// Zookeeper session timeout, default is 6s
