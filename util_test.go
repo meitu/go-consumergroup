@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/meitu/zk_wrapper"
 	"github.com/samuel/go-zookeeper/zk"
 )
 
@@ -25,7 +26,7 @@ func TestUtilSliceRemoveDuplicates(t *testing.T) {
 	}
 }
 
-func deleteRecursive(c *zk.Conn, zkPath string) error {
+func deleteRecursive(c *zk_wrapper.Conn, zkPath string) error {
 	p := zkPath
 	for p != "/" {
 		err := c.Delete(p, -1)
@@ -38,7 +39,7 @@ func deleteRecursive(c *zk.Conn, zkPath string) error {
 }
 
 func TestUtilMkdirRecursive(t *testing.T) {
-	client, _, err := zk.Connect([]string{"127.0.0.1:2181"}, time.Duration(6)*time.Second)
+	client, _, err := zk_wrapper.Connect([]string{"127.0.0.1:2181"}, time.Duration(6)*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
