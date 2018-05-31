@@ -1,6 +1,6 @@
 # go-consumergroup [![Build Status](https://travis-ci.org/meitu/go-consumergroup.svg?branch=master)](https://travis-ci.org/meitu/go-consumergroup) [![Go Report Card](https://goreportcard.com/badge/github.com/meitu/go-consumergroup)](https://goreportcard.com/report/github.com/meitu/go-consumergroup)
 
-Go-consumergroup is a kafka consumer library written in golang with group and rebalance supports.
+Go-consumergroup is a kafka consumer library written in golang with rebalance and chroot supports.
 
 [Chinese Doc](./README.zh-CN.md)
 
@@ -9,8 +9,8 @@ Go-consumergroup is a kafka consumer library written in golang with group and re
 
 ## Dependencies
 * [go-zookeeper](https://github.com/samuel/go-zookeeper)
-
 * [sarama](https://github.com/Shopify/sarama)
+* [zk_wrapper](https://github.com/meitu/zk_wrapper)
 
 ## Getting started 
 

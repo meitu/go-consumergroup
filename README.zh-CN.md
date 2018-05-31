@@ -1,7 +1,7 @@
 # go-consumergroup [![Build Status](https://travis-ci.org/meitu/go-consumergroup.svg?branch=master)](https://travis-ci.org/meitu/go-consumergroup) [![Go Report Card](https://goreportcard.com/badge/github.com/meitu/go-consumergroup)](https://goreportcard.com/report/github.com/meitu/go-consumergroup)
 
 ### 简介
-go-consumergroup是一款提供集群功能的kafka客户端，程序的实现是对sarama进行了一层包装，比其多提供了rebalance功能和自动管理offset的功能。目前基于zookeeper的集群功能已经开发完毕（适用于0.8及以后所有版本），基于kafka的集群功能还在开发中（适用于0.9.0.0及以上版本）。
+go-consumergroup是一款提供集群功能的kafka客户端，支持 rebalance，offset 自动或者手动管理以及 chroot 功能。
 
 ### 依赖
 <https://github.com/samuel/go-zookeeper>
