@@ -58,6 +58,9 @@ func NewConsumerGroup(config *Config) (*ConsumerGroup, error) {
 	cg.topicConsumers = make(map[string]*topicConsumer)
 	cg.logger = newProxyLogger(prefix, newDefaultLogger(infoLevel))
 	cg.storage = newZKGroupStorage(config.ZkList, config.ZkSessionTimeout)
+	if _, ok := cg.storage.(*zkGroupStorage); ok {
+		cg.storage.(*zkGroupStorage).Chroot(config.Chroot)
+	}
 
 	err = cg.initSaramaConsumer()
 	if err != nil {

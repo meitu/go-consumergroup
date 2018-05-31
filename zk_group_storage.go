@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/meitu/zk_wrapper"
 	"github.com/samuel/go-zookeeper/zk"
 )
 
@@ -22,8 +23,9 @@ const (
 )
 
 type zkGroupStorage struct {
+	chroot         string
 	serverList     []string
-	client         *zk.Conn
+	client         *zk_wrapper.Conn
 	sessionTimeout time.Duration
 }
 
@@ -44,11 +46,20 @@ func newZKGroupStorage(serverList []string, sessionTimeout time.Duration) *zkGro
 	return s
 }
 
+func (s *zkGroupStorage) Chroot(chroot string) {
+	s.chroot = chroot
+}
+
 // getClient returns a zookeeper connetion.
-func (s *zkGroupStorage) getClient() (*zk.Conn, error) {
+func (s *zkGroupStorage) getClient() (*zk_wrapper.Conn, error) {
 	var err error
 	if s.client == nil {
-		s.client, _, err = zk.Connect(s.serverList, s.sessionTimeout)
+		s.client, _, err = zk_wrapper.Connect(s.serverList, s.sessionTimeout)
+		if s.client != nil && s.chroot != "" {
+			if err = s.client.Chroot(s.chroot); err != nil {
+				return nil, err
+			}
+		}
 	}
 	return s.client, err
 }

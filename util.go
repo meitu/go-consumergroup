@@ -8,6 +8,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/meitu/zk_wrapper"
 	"github.com/samuel/go-zookeeper/zk"
 )
 
@@ -40,7 +41,7 @@ func genConsumerID() string {
 	return fmt.Sprintf("%s-%d-%s", name, currentMilliSec, string(randBytes))
 }
 
-func mkdirRecursive(c *zk.Conn, zkPath string) error {
+func mkdirRecursive(c *zk_wrapper.Conn, zkPath string) error {
 	var err error
 	parent := path.Dir(zkPath)
 	if parent != "/" {
@@ -55,15 +56,15 @@ func mkdirRecursive(c *zk.Conn, zkPath string) error {
 	return err
 }
 
-func zkCreateEphemeralPath(c *zk.Conn, zkPath string, data []byte) error {
+func zkCreateEphemeralPath(c *zk_wrapper.Conn, zkPath string, data []byte) error {
 	return zkCreateRecursive(c, zkPath, zk.FlagEphemeral, data)
 }
 
-func zkCreatePersistentPath(c *zk.Conn, zkPath string, data []byte) error {
+func zkCreatePersistentPath(c *zk_wrapper.Conn, zkPath string, data []byte) error {
 	return zkCreateRecursive(c, zkPath, 0, data)
 }
 
-func zkCreateRecursive(c *zk.Conn, zkPath string, flags int32, data []byte) error {
+func zkCreateRecursive(c *zk_wrapper.Conn, zkPath string, flags int32, data []byte) error {
 	_, err := c.Create(zkPath, data, flags, zk.WorldACL(zk.PermAll))
 	if err != nil && err != zk.ErrNoNode {
 		return err
@@ -75,7 +76,7 @@ func zkCreateRecursive(c *zk.Conn, zkPath string, flags int32, data []byte) erro
 	return err
 }
 
-func zkSetPersistentPath(c *zk.Conn, zkPath string, data []byte) error {
+func zkSetPersistentPath(c *zk_wrapper.Conn, zkPath string, data []byte) error {
 	_, err := c.Set(zkPath, data, -1)
 	if err != nil && err != zk.ErrNoNode {
 		return err
