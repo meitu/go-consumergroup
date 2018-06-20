@@ -121,8 +121,8 @@ func (pc *partitionConsumer) claim() error {
 		if err == nil {
 			return nil
 		}
-		if i%3 == 0 || retry > 0 {
-			cg.logger.Errorf("Failed to claim topic[%s] partition[%d] after %d retires, err %s",
+		if i != 0 && (i%3 == 0 || retry > 0) {
+			cg.logger.Warnf("Failed to claim topic[%s] partition[%d] after %d retires, err %s",
 				pc.topic, pc.partition, i, err)
 		}
 		select {
@@ -132,7 +132,7 @@ func (pc *partitionConsumer) claim() error {
 			return errors.New("stop signal was received when claim partition")
 		}
 	}
-	return fmt.Errorf("claim partition err, after %d retries", retry)
+	return fmt.Errorf("failed to claim partition after %d retries", retry)
 }
 
 func (pc *partitionConsumer) release() error {
