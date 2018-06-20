@@ -93,7 +93,7 @@ func (pc *partitionConsumer) start() {
 	return
 
 ERROR:
-	cg.ExitGroup()
+	cg.stop()
 }
 
 func (pc *partitionConsumer) loadOffsetFromZk() error {

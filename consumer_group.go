@@ -26,6 +26,7 @@ type ConsumerGroup struct {
 
 	id               string
 	state            int
+	wg               sync.WaitGroup
 	stopper          chan struct{}
 	rebalanceTrigger chan struct{}
 	stopOnce         *sync.Once
@@ -97,6 +98,7 @@ func (cg *ConsumerGroup) JoinGroup() error {
 	if err != nil && err != zk.ErrNodeExists {
 		return err
 	}
+	cg.wg.Add(1)
 	go cg.start()
 	return nil
 }
@@ -104,7 +106,8 @@ func (cg *ConsumerGroup) JoinGroup() error {
 // ExitGroup would unregister ConsumerGroup, and rebalance would be triggered.
 // The partitions which consumed by this ConsumerGroup would be assigned to others.
 func (cg *ConsumerGroup) ExitGroup() {
-	cg.stopOnce.Do(func() { close(cg.stopper) })
+	cg.stop()
+	cg.wg.Wait()
 }
 
 // IsStopped return whether the ConsumerGroup was stopped or not.
@@ -119,7 +122,7 @@ func (cg *ConsumerGroup) triggerRebalance() {
 func (cg *ConsumerGroup) callRecover() {
 	if err := recover(); err != nil {
 		cg.logger.Errorf("[recover panic] %s %s", err, string(debug.Stack()))
-		cg.ExitGroup()
+		cg.stop()
 	}
 }
 
@@ -137,6 +140,7 @@ func (cg *ConsumerGroup) start() {
 			close(tc.messages)
 			close(tc.errors)
 		}
+		cg.wg.Done()
 	}()
 
 CONSUME_TOPIC_LOOP:
@@ -148,7 +152,7 @@ CONSUME_TOPIC_LOOP:
 		err := cg.watchRebalance()
 		if err != nil {
 			cg.logger.Errorf("Failed to watch rebalance, err %s", err)
-			cg.ExitGroup()
+			cg.stop()
 			return
 		}
 		wg.Add(1)
@@ -170,7 +174,7 @@ CONSUME_TOPIC_LOOP:
 		select {
 		case <-cg.rebalanceTrigger:
 			cg.logger.Info("Trigger rebalance")
-			cg.ExitGroup()
+			cg.stop()
 			wg.Wait()
 			// The stopper channel was used to notify partition's consumer to stop consuming when rebalance is triggered.
 			// So we should reinit when rebalace was triggered, as it would be closed.
@@ -184,6 +188,10 @@ CONSUME_TOPIC_LOOP:
 			return
 		}
 	}
+}
+
+func (cg *ConsumerGroup) stop() {
+	cg.stopOnce.Do(func() { close(cg.stopper) })
 }
 
 func (cg *ConsumerGroup) getPartitionConsumer(topic string, partition int32, nextOffset int64) (sarama.PartitionConsumer, error) {
