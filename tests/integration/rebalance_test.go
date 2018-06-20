@@ -55,5 +55,7 @@ func TestRebalance(t *testing.T) {
 
 	for _, c := range consumers {
 		c.ExitGroup()
+		// no way to exit group when the consumer is rebalancing
+		time.Sleep(3 * time.Second)
 	}
 }
