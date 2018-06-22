@@ -62,7 +62,7 @@ func (pc *partitionConsumer) start() {
 
 	pc.consumer, err = cg.getPartitionConsumer(pc.topic, pc.partition, pc.offset)
 	if err != nil {
-		cg.logger.Errorf("Failed to topic[%s] partition[%d] message, err %s",
+		cg.logger.Errorf("Failed to get topic[%s] partition[%d] consumer, err %s",
 			pc.topic, pc.partition, err)
 		goto ERROR
 	}
@@ -93,7 +93,7 @@ func (pc *partitionConsumer) start() {
 	return
 
 ERROR:
-	cg.ExitGroup()
+	cg.stop()
 }
 
 func (pc *partitionConsumer) loadOffsetFromZk() error {
@@ -121,8 +121,8 @@ func (pc *partitionConsumer) claim() error {
 		if err == nil {
 			return nil
 		}
-		if i%3 == 0 || retry > 0 {
-			cg.logger.Errorf("Failed to claim topic[%s] partition[%d] after %d retires, err %s",
+		if i != 0 && (i%3 == 0 || retry > 0) {
+			cg.logger.Warnf("Failed to claim topic[%s] partition[%d] after %d retires, err %s",
 				pc.topic, pc.partition, i, err)
 		}
 		select {
@@ -132,7 +132,7 @@ func (pc *partitionConsumer) claim() error {
 			return errors.New("stop signal was received when claim partition")
 		}
 	}
-	return fmt.Errorf("claim partition err, after %d retries", retry)
+	return fmt.Errorf("failed to claim partition after %d retries", retry)
 }
 
 func (pc *partitionConsumer) release() error {
@@ -144,7 +144,8 @@ func (pc *partitionConsumer) release() error {
 	if cg.id == owner {
 		return cg.storage.releasePartition(pc.group, pc.topic, pc.partition)
 	}
-	return errors.New("partition wasn't ownered by this consumergroup")
+	return fmt.Errorf("the owner of topic[%s] partition[%d] expected %s, but got %s",
+		pc.topic, pc.partition, owner, cg.id)
 }
 
 func (pc *partitionConsumer) fetch() {
@@ -152,6 +153,8 @@ func (pc *partitionConsumer) fetch() {
 	messageChan := pc.owner.messages
 	errorChan := pc.owner.errors
 
+	cg.logger.Infof("Start to fetch topic[%s] partition[%d] messages from offset[%d]",
+		pc.topic, pc.partition, pc.offset)
 PARTITION_CONSUMER_LOOP:
 	for {
 		select {
