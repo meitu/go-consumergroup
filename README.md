@@ -17,6 +17,13 @@ Go-consumergroup is a kafka consumer library written in golang with rebalance an
 * API documentation and examples are available via [godoc](https://godoc.org/github.com/meitu/go-consumergroup).
 * The example directory contains more elaborate [example](example/example.go) applications.
 
+## User Defined Logger 
+
+```
+logger := logrus.New()
+cg.SetLogger(logger)
+```
+
 ## Run Tests
 
 ```shell

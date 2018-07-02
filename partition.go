@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Shopify/sarama"
+	"github.com/sirupsen/logrus"
 )
 
 type partitionConsumer struct {
@@ -37,33 +38,57 @@ func (pc *partitionConsumer) start() {
 	cg := pc.owner.owner
 	err := pc.claim()
 	if err != nil {
-		cg.logger.Errorf("Failed to claim topic[%s] partition[%d] and give up, err %s",
-			pc.topic, pc.partition, err)
+		cg.logger.WithFields(logrus.Fields{
+			"group":     pc.group,
+			"topic":     pc.topic,
+			"partition": pc.partition,
+			"err":       err,
+		}).Error("Failed to clamin the partition and gave up")
 		goto ERROR
 	}
 	defer func() {
 		err = pc.release()
 		if err != nil {
-			cg.logger.Errorf("Failed to release topic[%s] partition[%d], err %s",
-				pc.topic, pc.partition, err)
+			cg.logger.WithFields(logrus.Fields{
+				"group":     pc.group,
+				"topic":     pc.topic,
+				"partition": pc.partition,
+				"err":       err,
+			}).Error("Failed to release the partition")
 		} else {
-			cg.logger.Infof("Release topic[%s] partition[%d] success", pc.topic, pc.partition)
+			cg.logger.WithFields(logrus.Fields{
+				"group":     pc.group,
+				"topic":     pc.topic,
+				"partition": pc.partition,
+			}).Info("Success to release the partition")
 		}
 	}()
 
 	err = pc.loadOffsetFromZk()
 	if err != nil {
-		cg.logger.Errorf("Failed to load topic[%s] partition[%d] offset from zk, err %s",
-			pc.topic, pc.partition, err)
+		cg.logger.WithFields(logrus.Fields{
+			"group":     pc.group,
+			"topic":     pc.topic,
+			"partition": pc.partition,
+			"err":       err,
+		}).Error("Failed to fetch the partition's offset")
 		goto ERROR
 	}
-	cg.logger.Debugf("Get topic[%s] partition[%d] offset[%d] from offset storage",
-		pc.topic, pc.partition, pc.offset)
-
+	cg.logger.WithFields(logrus.Fields{
+		"group":     pc.group,
+		"topic":     pc.topic,
+		"partition": pc.partition,
+		"offset":    pc.offset,
+	}).Info("Fetched the partition's offset from zk")
 	pc.consumer, err = cg.getPartitionConsumer(pc.topic, pc.partition, pc.offset)
 	if err != nil {
-		cg.logger.Errorf("Failed to get topic[%s] partition[%d] consumer, err %s",
-			pc.topic, pc.partition, err)
+		cg.logger.WithFields(logrus.Fields{
+			"group":     pc.group,
+			"topic":     pc.topic,
+			"partition": pc.partition,
+			"offset":    pc.offset,
+			"err":       err,
+		}).Error("Failed to create the partition's consumer")
 		goto ERROR
 	}
 	defer pc.consumer.Close()
@@ -73,8 +98,11 @@ func (pc *partitionConsumer) start() {
 		go func() {
 			defer cg.callRecover()
 			defer wg.Done()
-			cg.logger.Infof("Offset auto-commit topic[%s] partition[%d] thread was started",
-				pc.topic, pc.partition)
+			cg.logger.WithFields(logrus.Fields{
+				"group":     pc.group,
+				"topic":     pc.topic,
+				"partition": pc.partition,
+			}).Info("Start the partition's offset auto-commit thread")
 			pc.autoCommitOffset()
 		}()
 	}
@@ -83,12 +111,22 @@ func (pc *partitionConsumer) start() {
 	if cg.config.OffsetAutoCommitEnable {
 		err = pc.commitOffset()
 		if err != nil {
-			cg.logger.Errorf("Failed to commit topic[%s] partition[%d] offset[%d]",
-				pc.topic, pc.partition, pc.offset)
+			cg.logger.WithFields(logrus.Fields{
+				"group":     pc.group,
+				"topic":     pc.topic,
+				"partition": pc.partition,
+				"offset":    pc.offset,
+				"err":       err,
+			}).Error("Failed to commit the partition's offset")
 		}
+
 		wg.Wait() // Wait for auto-commit-offset thread
-		cg.logger.Infof("Offset auto-commit topic[%s] partition[%d] thread was stoped",
-			pc.topic, pc.partition)
+		cg.logger.WithFields(logrus.Fields{
+			"group":     pc.group,
+			"topic":     pc.topic,
+			"partition": pc.partition,
+			"offset":    pc.offset,
+		}).Info("Start the partition's offset auto-commit thread")
 	}
 	return
 
@@ -122,8 +160,13 @@ func (pc *partitionConsumer) claim() error {
 			return nil
 		}
 		if i != 0 && (i%3 == 0 || retry > 0) {
-			cg.logger.Warnf("Failed to claim topic[%s] partition[%d] after %d retires, err %s",
-				pc.topic, pc.partition, i, err)
+			cg.logger.WithFields(logrus.Fields{
+				"group":     pc.group,
+				"topic":     pc.topic,
+				"partition": pc.partition,
+				"retries":   i,
+				"err":       err,
+			}).Warn("Failed to claim the partiton with retries")
 		}
 		select {
 		case <-timer.C:
@@ -153,8 +196,12 @@ func (pc *partitionConsumer) fetch() {
 	messageChan := pc.owner.messages
 	errorChan := pc.owner.errors
 
-	cg.logger.Infof("Start to fetch topic[%s] partition[%d] messages from offset[%d]",
-		pc.topic, pc.partition, pc.offset)
+	cg.logger.WithFields(logrus.Fields{
+		"group":     pc.group,
+		"topic":     pc.topic,
+		"partition": pc.partition,
+		"offset":    pc.offset,
+	}).Info("Start to fetch the partition's messages")
 PARTITION_CONSUMER_LOOP:
 	for {
 		select {
@@ -164,7 +211,12 @@ PARTITION_CONSUMER_LOOP:
 			errorChan <- err
 		case message := <-pc.consumer.Messages():
 			if message == nil {
-				cg.logger.Errorf("Sarama partition consumer encounter error, the consumer would be exited")
+				cg.logger.WithFields(logrus.Fields{
+					"group":     pc.group,
+					"topic":     pc.topic,
+					"partition": pc.partition,
+					"offset":    pc.offset,
+				}).Error("Sarama partition consumer encounter error, the consumer would be exited")
 				close(cg.stopper)
 				break PARTITION_CONSUMER_LOOP
 			}
@@ -189,8 +241,12 @@ func (pc *partitionConsumer) autoCommitOffset() {
 		case <-timer.C:
 			err := pc.commitOffset()
 			if err != nil {
-				cg.logger.Errorf("Failed to auto commit topic[%s] partition[%d] offset[%d], err :%s",
-					pc.topic, pc.partition, pc.offset, err)
+				cg.logger.WithFields(logrus.Fields{
+					"topic":     pc.topic,
+					"partition": pc.partition,
+					"offset":    pc.offset,
+					"err":       err,
+				}).Error("Failed to auto-commit the partition's offset")
 			}
 			timer.Reset(cg.config.OffsetAutoCommitInterval)
 		}

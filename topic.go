@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/Shopify/sarama"
+	"github.com/sirupsen/logrus"
 )
 
 type topicConsumer struct {
@@ -19,6 +20,7 @@ type topicConsumer struct {
 func newTopicConsumer(owner *ConsumerGroup, topic string) *topicConsumer {
 	tc := new(topicConsumer)
 	tc.owner = owner
+	tc.group = owner.name
 	tc.name = topic
 	tc.errors = make(chan *sarama.ConsumerError)
 	tc.messages = make(chan *sarama.ConsumerMessage)
@@ -30,15 +32,31 @@ func (tc *topicConsumer) start() {
 
 	cg := tc.owner
 	topic := tc.name
-	cg.logger.Infof("Start to consume topic[%s]", topic)
-	defer cg.logger.Infof("Stop to consume topic[%s]", topic)
+
+	cg.logger.WithFields(logrus.Fields{
+		"group": tc.group,
+		"topic": topic,
+	}).Info("Start the topic consumer")
+	defer cg.logger.WithFields(logrus.Fields{
+		"group": tc.group,
+		"topic": topic,
+	}).Info("Stop the topic consumer")
 
 	partitions, err := tc.assignPartitions()
 	if err != nil {
-		cg.logger.Errorf("Failed to assign partitions to topic[%s], err %s", topic, err)
+		cg.logger.WithFields(logrus.Fields{
+			"group": tc.group,
+			"topic": topic,
+			"err":   err,
+		}).Error("Failed to assign partitions to topic consumer")
 		return
 	}
-	cg.logger.Infof("Topic[%s], partitions %v are assigned to this consumer", topic, partitions)
+
+	cg.logger.WithFields(logrus.Fields{
+		"group":      tc.group,
+		"topic":      topic,
+		"partitions": partitions,
+	}).Info("The partitions was assigned to current topic consumer")
 	tc.partitionConsumers = make(map[int32]*partitionConsumer)
 	for _, partition := range partitions {
 		tc.partitionConsumers[partition] = newPartitionConsumer(tc, partition)
@@ -50,7 +68,11 @@ func (tc *topicConsumer) start() {
 			defer wg.Done()
 			pc.start()
 		}(consumer)
-		cg.logger.Infof("Start to consume Topic[%s] partition[%d]", topic, partition)
+		cg.logger.WithFields(logrus.Fields{
+			"group":     tc.group,
+			"topic":     topic,
+			"partition": partition,
+		}).Info("Topic consumer start to consume the partition")
 	}
 	wg.Wait()
 }

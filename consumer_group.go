@@ -9,6 +9,7 @@ import (
 
 	"github.com/Shopify/sarama"
 	"github.com/samuel/go-zookeeper/zk"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -33,7 +34,7 @@ type ConsumerGroup struct {
 	rebalanceOnce    *sync.Once
 
 	config *Config
-	logger *proxyLogger
+	logger *logrus.Logger
 }
 
 // NewConsumerGroup create the ConsumerGroup instance with config
@@ -55,10 +56,9 @@ func NewConsumerGroup(config *Config) (*ConsumerGroup, error) {
 	cg.stopper = make(chan struct{})
 	cg.rebalanceOnce = new(sync.Once)
 	cg.rebalanceTrigger = make(chan struct{})
-	prefix := fmt.Sprintf("[go-consumergroup %s]", cg.name)
 	cg.topicConsumers = make(map[string]*topicConsumer)
-	cg.logger = newProxyLogger(prefix, newDefaultLogger(infoLevel))
 	cg.storage = newZKGroupStorage(config.ZkList, config.ZkSessionTimeout)
+	cg.logger = logrus.New()
 	if _, ok := cg.storage.(*zkGroupStorage); ok {
 		cg.storage.(*zkGroupStorage).Chroot(config.Chroot)
 	}
@@ -85,11 +85,6 @@ func (cg *ConsumerGroup) initSaramaConsumer() error {
 	return err
 }
 
-// SetLogger allow user to set user's logger, or defaultLogger would print to stdout.
-func (cg *ConsumerGroup) SetLogger(logger Logger) {
-	cg.logger.targetLogger = logger
-}
-
 // JoinGroup would register ConsumerGroup, and rebalance would be triggered.
 // ConsumerGroup computes the partitions which should be consumed by consumer's num, and start fetching message.
 func (cg *ConsumerGroup) JoinGroup() error {
@@ -110,6 +105,13 @@ func (cg *ConsumerGroup) ExitGroup() {
 	cg.wg.Wait()
 }
 
+// SetLogger use to set the user's logger the consumer group
+func (cg *ConsumerGroup) SetLogger(l *logrus.Logger) {
+	if l != nil {
+		cg.logger = l
+	}
+}
+
 // IsStopped return whether the ConsumerGroup was stopped or not.
 func (cg *ConsumerGroup) IsStopped() bool {
 	return cg.state == cgStopped
@@ -121,7 +123,11 @@ func (cg *ConsumerGroup) triggerRebalance() {
 
 func (cg *ConsumerGroup) callRecover() {
 	if err := recover(); err != nil {
-		cg.logger.Errorf("[recover panic] %s %s", err, string(debug.Stack()))
+		cg.logger.WithFields(logrus.Fields{
+			"group": cg.name,
+			"err":   err,
+			"stack": string(debug.Stack()),
+		}).Error("Recover panic")
 		cg.stop()
 	}
 }
@@ -134,7 +140,10 @@ func (cg *ConsumerGroup) start() {
 		cg.state = cgStopped
 		err := cg.storage.deleteConsumer(cg.name, cg.id)
 		if err != nil {
-			cg.logger.Errorf("Failed to delete consumer from zookeeper, err %s", err)
+			cg.logger.WithFields(logrus.Fields{
+				"group": cg.name,
+				"err":   err,
+			}).Error("Failed to delete consumer from zk")
 		}
 		for _, tc := range cg.topicConsumers {
 			close(tc.messages)
@@ -145,13 +154,16 @@ func (cg *ConsumerGroup) start() {
 
 CONSUME_TOPIC_LOOP:
 	for {
-		cg.logger.Info("Consumer started")
+		cg.logger.WithField("group", cg.name).Info("Consumer group started")
 		cg.rebalanceOnce = new(sync.Once)
 		cg.stopOnce = new(sync.Once)
 
 		err := cg.watchRebalance()
 		if err != nil {
-			cg.logger.Errorf("Failed to watch rebalance, err %s", err)
+			cg.logger.WithFields(logrus.Fields{
+				"group": cg.name,
+				"err":   err,
+			}).Error("Failed to watch rebalance")
 			cg.stop()
 			return
 		}
@@ -173,7 +185,7 @@ CONSUME_TOPIC_LOOP:
 
 		select {
 		case <-cg.rebalanceTrigger:
-			cg.logger.Info("Trigger rebalance")
+			cg.logger.WithField("group", cg.name).Info("Trigger rebalance")
 			cg.stop()
 			wg.Wait()
 			// The stopper channel was used to notify partition's consumer to stop consuming when rebalance is triggered.
@@ -182,9 +194,9 @@ CONSUME_TOPIC_LOOP:
 			cg.rebalanceTrigger = make(chan struct{})
 			continue CONSUME_TOPIC_LOOP
 		case <-cg.stopper: // triggered when ExitGroup() is called
-			cg.logger.Info("ConsumerGroup is stopping")
+			cg.logger.WithField("group", cg.name).Info("ConsumerGroup is stopping")
 			wg.Wait()
-			cg.logger.Info("ConsumerGroup was stopped")
+			cg.logger.WithField("group", cg.name).Info("ConsumerGroup was stopped")
 			return
 		}
 	}
@@ -224,8 +236,8 @@ func (cg *ConsumerGroup) GetErrors(topic string) (<-chan *sarama.ConsumerError, 
 
 func (cg *ConsumerGroup) autoReconnect(interval time.Duration) {
 	timer := time.NewTimer(interval)
-	cg.logger.Info("The auto-reconnect consumer thread was started")
-	defer cg.logger.Info("The auto-reconnect consumer thread was stopped")
+	cg.logger.WithField("group", cg.name).Info("The auto-reconnect consumer thread was started")
+	defer cg.logger.WithField("group", cg.name).Info("The auto-reconnect consumer thread was stopped")
 	for {
 		select {
 		case <-cg.stopper:
@@ -234,7 +246,10 @@ func (cg *ConsumerGroup) autoReconnect(interval time.Duration) {
 			timer.Reset(interval)
 			exist, err := cg.storage.existsConsumer(cg.name, cg.id)
 			if err != nil {
-				cg.logger.Errorf("Failed to check consumer exist, err %s", err)
+				cg.logger.WithFields(logrus.Fields{
+					"group": cg.name,
+					"err":   err,
+				}).Error("Failed to check consumer existence")
 				break
 			}
 			if exist {
@@ -242,7 +257,10 @@ func (cg *ConsumerGroup) autoReconnect(interval time.Duration) {
 			}
 			err = cg.storage.registerConsumer(cg.name, cg.id, nil)
 			if err != nil {
-				cg.logger.Errorf("Faild to re-register consumer, err %s", err)
+				cg.logger.WithFields(logrus.Fields{
+					"group": cg.name,
+					"err":   err,
+				}).Error("Failed to re-register consumer")
 			}
 		}
 	}
@@ -255,14 +273,14 @@ func (cg *ConsumerGroup) watchRebalance() error {
 	}
 	go func() {
 		defer cg.callRecover()
-		cg.logger.Info("Rebalance watcher thread was started")
+		cg.logger.WithField("group", cg.name).Info("Rebalance watcher thread was started")
 		select {
 		case <-consumerListChange:
 			cg.rebalanceOnce.Do(cg.triggerRebalance)
-			cg.logger.Info("Trigger rebalance while consumers was changed")
+			cg.logger.WithField("group", cg.name).Info("Trigger rebalance while consumers was changed")
 		case <-cg.stopper:
 		}
-		cg.logger.Info("Rebalance watcher thread was exited")
+		cg.logger.WithField("group", cg.name).Info("Rebalance watcher thread was exited")
 	}()
 	return nil
 }
