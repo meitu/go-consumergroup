@@ -208,8 +208,17 @@ PARTITION_CONSUMER_LOOP:
 		case <-cg.stopper:
 			break PARTITION_CONSUMER_LOOP
 		case err := <-pc.consumer.Errors():
+			if err.Err == sarama.ErrOffsetOutOfRange {
+				pc.restart()
+				break
+			}
 			errorChan <- err
-		case message := <-pc.consumer.Messages():
+		case message, ok := <-pc.consumer.Messages():
+			//check if the channel is closed. message channel close while the offset out of range
+			if !ok {
+				pc.restart()
+				break
+			}
 			if message == nil {
 				cg.logger.WithFields(logrus.Fields{
 					"group":     pc.group,
@@ -265,4 +274,33 @@ func (pc *partitionConsumer) commitOffset() error {
 	}
 	pc.prevOffset = offset
 	return nil
+}
+
+func (pc *partitionConsumer) restart() {
+	cg := pc.owner.owner
+	cg.logger.WithFields(logrus.Fields{
+		"group":     pc.group,
+		"topic":     pc.topic,
+		"partition": pc.partition,
+	}).Infof("Restart partition consumer while the offset out of range")
+	err := pc.consumer.Close()
+	if err != nil {
+		cg.logger.WithFields(logrus.Fields{
+			"group":     pc.group,
+			"topic":     pc.topic,
+			"partition": pc.partition,
+		}).Error("Stop consumer group because the old partition consumer cannot be closed")
+		close(cg.stopper)
+		return
+	}
+	pc.consumer, err = cg.getPartitionConsumer(pc.topic, pc.partition, sarama.OffsetOldest)
+	if err != nil {
+		cg.logger.WithFields(logrus.Fields{
+			"group":     pc.group,
+			"topic":     pc.topic,
+			"partition": pc.partition,
+			"err":       err,
+		}).Error("Stop consumer group because the new partition consumer cannot be start")
+		close(cg.stopper)
+	}
 }
