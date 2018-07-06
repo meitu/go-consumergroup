@@ -16,6 +16,8 @@ type Config struct {
 	ZkSessionTimeout time.Duration
 	// GroupID is required, identifer to determin which ConsumerGroup would be joined
 	GroupID string
+	// ConsumerID is optional, identifer to sign partition's owner
+	ConsumerID string
 	// TopicList is required, topics that ConsumerGroup would be consumed
 	TopicList []string
 	// Just export Sarama Config

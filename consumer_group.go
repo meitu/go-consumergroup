@@ -50,7 +50,10 @@ func NewConsumerGroup(config *Config) (*ConsumerGroup, error) {
 	cg := new(ConsumerGroup)
 	cg.state = cgInit
 	cg.config = config
-	cg.id = genConsumerID()
+	cg.id = config.ConsumerID
+	if cg.id == "" {
+		cg.id = genConsumerID()
+	}
 	cg.name = config.GroupID
 	cg.stopOnce = new(sync.Once)
 	cg.stopper = make(chan struct{})
