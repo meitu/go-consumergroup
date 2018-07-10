@@ -16,5 +16,5 @@ func TestConsumerGroup(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	fmt.Println(cg.JoinGroup())
+	fmt.Println(cg.Start())
 }

@@ -88,9 +88,9 @@ func (cg *ConsumerGroup) initSaramaConsumer() error {
 	return err
 }
 
-// JoinGroup would register ConsumerGroup, and rebalance would be triggered.
+// Start would register ConsumerGroup, and rebalance would be triggered.
 // ConsumerGroup computes the partitions which should be consumed by consumer's num, and start fetching message.
-func (cg *ConsumerGroup) JoinGroup() error {
+func (cg *ConsumerGroup) Start() error {
 	// exit when failed to register the consumer
 	err := cg.storage.registerConsumer(cg.name, cg.id, nil)
 	if err != nil && err != zk.ErrNodeExists {
@@ -101,9 +101,9 @@ func (cg *ConsumerGroup) JoinGroup() error {
 	return nil
 }
 
-// ExitGroup would unregister ConsumerGroup, and rebalance would be triggered.
+// Stop would unregister ConsumerGroup, and rebalance would be triggered.
 // The partitions which consumed by this ConsumerGroup would be assigned to others.
-func (cg *ConsumerGroup) ExitGroup() {
+func (cg *ConsumerGroup) Stop() {
 	cg.stop()
 	cg.wg.Wait()
 }
@@ -196,7 +196,7 @@ CONSUME_TOPIC_LOOP:
 			cg.stopper = make(chan struct{})
 			cg.rebalanceTrigger = make(chan struct{})
 			continue CONSUME_TOPIC_LOOP
-		case <-cg.stopper: // triggered when ExitGroup() is called
+		case <-cg.stopper: // triggered when Stop() is called
 			cg.logger.WithField("group", cg.name).Info("ConsumerGroup is stopping")
 			wg.Wait()
 			cg.logger.WithField("group", cg.name).Info("ConsumerGroup was stopped")

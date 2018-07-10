@@ -13,9 +13,9 @@ import (
 func handleSignal(sig os.Signal, cg *consumergroup.ConsumerGroup) {
 	switch sig {
 	case syscall.SIGINT:
-		cg.ExitGroup()
+		cg.Stop()
 	case syscall.SIGTERM:
-		cg.ExitGroup()
+		cg.Stop()
 	default:
 	}
 }
@@ -49,7 +49,7 @@ func main() {
 
 	registerSignal(cg)
 
-	err = cg.JoinGroup()
+	err = cg.Start()
 	if err != nil {
 		fmt.Println("Failed to join group, err ", err.Error())
 		os.Exit(1)

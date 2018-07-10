@@ -52,7 +52,7 @@ func createConsumerInstance(addrs []string, groupID, topic string) (*consumergro
 	if err != nil {
 		return nil, err
 	}
-	err = cg.JoinGroup()
+	err = cg.Start()
 	if err != nil {
 		return nil, err
 	}

@@ -17,7 +17,7 @@ func TestOffsetAutoCommit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create consumer instance, err %s", err)
 	}
-	defer c.ExitGroup()
+	defer c.Stop()
 	time.Sleep(3000 * time.Millisecond) // we have no way to know if the consumer is ready
 	produceMessages(brokers, topic, 0, count)
 	messages, _ := c.GetMessages(topic)
