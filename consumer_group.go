@@ -18,6 +18,11 @@ const (
 	cgStopped
 )
 
+const (
+	restartEvent = iota
+	quitEvent
+)
+
 // ConsumerGroup consume message from Kafka with rebalancing supports
 type ConsumerGroup struct {
 	name           string
@@ -25,13 +30,12 @@ type ConsumerGroup struct {
 	topicConsumers map[string]*topicConsumer
 	saramaConsumer sarama.Consumer
 
-	id               string
-	state            int
-	wg               sync.WaitGroup
-	stopper          chan struct{}
-	rebalanceTrigger chan struct{}
-	stopOnce         *sync.Once
-	rebalanceOnce    *sync.Once
+	id        string
+	state     int
+	wg        sync.WaitGroup
+	stopCh    chan struct{}
+	triggerCh chan int
+	stopOnce  *sync.Once
 
 	config *Config
 	logger *logrus.Logger
@@ -56,9 +60,7 @@ func NewConsumerGroup(config *Config) (*ConsumerGroup, error) {
 	}
 	cg.name = config.GroupID
 	cg.stopOnce = new(sync.Once)
-	cg.stopper = make(chan struct{})
-	cg.rebalanceOnce = new(sync.Once)
-	cg.rebalanceTrigger = make(chan struct{})
+	cg.triggerCh = make(chan int)
 	cg.topicConsumers = make(map[string]*topicConsumer)
 	cg.storage = newZKGroupStorage(config.ZkList, config.ZkSessionTimeout)
 	cg.logger = logrus.New()
@@ -121,7 +123,7 @@ func (cg *ConsumerGroup) IsStopped() bool {
 }
 
 func (cg *ConsumerGroup) triggerRebalance() {
-	close(cg.rebalanceTrigger)
+	cg.triggerCh <- restartEvent
 }
 
 func (cg *ConsumerGroup) callRecover() {
@@ -158,8 +160,7 @@ func (cg *ConsumerGroup) start() {
 CONSUME_TOPIC_LOOP:
 	for {
 		cg.logger.WithField("group", cg.name).Info("Consumer group started")
-		cg.rebalanceOnce = new(sync.Once)
-		cg.stopOnce = new(sync.Once)
+		cg.stopCh = make(chan struct{})
 
 		err := cg.watchRebalance()
 		if err != nil {
@@ -186,17 +187,16 @@ CONSUME_TOPIC_LOOP:
 		}
 		cg.state = cgStart
 
-		select {
-		case <-cg.rebalanceTrigger:
-			cg.logger.WithField("group", cg.name).Info("Trigger rebalance")
-			cg.stop()
+		msg := <-cg.triggerCh
+		switch msg {
+		case restartEvent:
+			close(cg.stopCh)
+			// The stop channel was used to notify partition's consumer to stop consuming when rebalance is triggered.
+			// So we should reinit when rebalance was triggered, as it would be closed.
 			wg.Wait()
-			// The stopper channel was used to notify partition's consumer to stop consuming when rebalance is triggered.
-			// So we should reinit when rebalace was triggered, as it would be closed.
-			cg.stopper = make(chan struct{})
-			cg.rebalanceTrigger = make(chan struct{})
 			continue CONSUME_TOPIC_LOOP
-		case <-cg.stopper: // triggered when Stop() is called
+		case quitEvent:
+			close(cg.stopCh)
 			cg.logger.WithField("group", cg.name).Info("ConsumerGroup is stopping")
 			wg.Wait()
 			cg.logger.WithField("group", cg.name).Info("ConsumerGroup was stopped")
@@ -206,7 +206,7 @@ CONSUME_TOPIC_LOOP:
 }
 
 func (cg *ConsumerGroup) stop() {
-	cg.stopOnce.Do(func() { close(cg.stopper) })
+	cg.stopOnce.Do(func() { cg.triggerCh <- quitEvent })
 }
 
 func (cg *ConsumerGroup) getPartitionConsumer(topic string, partition int32, nextOffset int64) (sarama.PartitionConsumer, error) {
@@ -243,7 +243,7 @@ func (cg *ConsumerGroup) autoReconnect(interval time.Duration) {
 	defer cg.logger.WithField("group", cg.name).Info("The auto-reconnect consumer thread was stopped")
 	for {
 		select {
-		case <-cg.stopper:
+		case <-cg.stopCh:
 			return
 		case <-timer.C:
 			timer.Reset(interval)
@@ -279,9 +279,9 @@ func (cg *ConsumerGroup) watchRebalance() error {
 		cg.logger.WithField("group", cg.name).Info("Rebalance watcher thread was started")
 		select {
 		case <-consumerListChange:
-			cg.rebalanceOnce.Do(cg.triggerRebalance)
+			cg.triggerRebalance()
 			cg.logger.WithField("group", cg.name).Info("Trigger rebalance while consumers was changed")
-		case <-cg.stopper:
+		case <-cg.stopCh:
 		}
 		cg.logger.WithField("group", cg.name).Info("Rebalance watcher thread was exited")
 	}()

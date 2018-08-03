@@ -171,7 +171,7 @@ func (pc *partitionConsumer) claim() error {
 		select {
 		case <-timer.C:
 			timer.Reset(cg.config.ClaimPartitionRetryInterval)
-		case <-cg.stopper:
+		case <-cg.stopCh:
 			return errors.New("stop signal was received when claim partition")
 		}
 	}
@@ -205,7 +205,7 @@ func (pc *partitionConsumer) fetch() {
 PARTITION_CONSUMER_LOOP:
 	for {
 		select {
-		case <-cg.stopper:
+		case <-cg.stopCh:
 			break PARTITION_CONSUMER_LOOP
 		case err := <-pc.consumer.Errors():
 			if err.Err == sarama.ErrOffsetOutOfRange {
@@ -226,13 +226,13 @@ PARTITION_CONSUMER_LOOP:
 					"partition": pc.partition,
 					"offset":    pc.offset,
 				}).Error("Sarama partition consumer encounter error, the consumer would be exited")
-				close(cg.stopper)
+				cg.stop()
 				break PARTITION_CONSUMER_LOOP
 			}
 			select {
 			case messageChan <- message:
 				pc.offset = message.Offset + 1
-			case <-cg.stopper:
+			case <-cg.stopCh:
 				break PARTITION_CONSUMER_LOOP
 			}
 		}
@@ -245,7 +245,7 @@ func (pc *partitionConsumer) autoCommitOffset() {
 	timer := time.NewTimer(cg.config.OffsetAutoCommitInterval)
 	for {
 		select {
-		case <-cg.stopper:
+		case <-cg.stopCh:
 			return
 		case <-timer.C:
 			err := pc.commitOffset()
@@ -290,7 +290,7 @@ func (pc *partitionConsumer) restart() {
 			"topic":     pc.topic,
 			"partition": pc.partition,
 		}).Error("Stop consumer group because the old partition consumer cannot be closed")
-		close(cg.stopper)
+		cg.stop()
 		return
 	}
 	pc.consumer, err = cg.getPartitionConsumer(pc.topic, pc.partition, sarama.OffsetOldest)
@@ -301,6 +301,6 @@ func (pc *partitionConsumer) restart() {
 			"partition": pc.partition,
 			"err":       err,
 		}).Error("Stop consumer group because the new partition consumer cannot be start")
-		close(cg.stopper)
+		cg.stop()
 	}
 }
