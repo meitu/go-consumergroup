@@ -295,3 +295,12 @@ func (cg *ConsumerGroup) CommitOffset(topic string, partition int32, offset int6
 	}
 	return cg.storage.commitOffset(cg.name, topic, partition, offset)
 }
+
+// GetOffsets return the offset in memory for debug
+func (cg *ConsumerGroup) GetOffsets() map[string]interface{} {
+	topics := make(map[string]interface{})
+	for topic, tc := range cg.topicConsumers {
+		topics[topic] = tc.getOffsets()
+	}
+	return topics
+}

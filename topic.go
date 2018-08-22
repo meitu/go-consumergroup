@@ -109,3 +109,11 @@ func (tc *topicConsumer) getPartitionNum() (int32, error) {
 	}
 	return int32(len(partitions)), nil
 }
+
+func (tc *topicConsumer) getOffsets() map[int32]interface{} {
+	partitions := make(map[int32]interface{})
+	for partition, pc := range tc.partitionConsumers {
+		partitions[partition] = pc.getOffset()
+	}
+	return partitions
+}

@@ -304,3 +304,10 @@ func (pc *partitionConsumer) restart() {
 		cg.stop()
 	}
 }
+
+func (pc *partitionConsumer) getOffset() map[string]interface{} {
+	offset := make(map[string]interface{})
+	offset["offset"] = pc.offset
+	offset["prev_offset"] = pc.prevOffset
+	return offset
+}
