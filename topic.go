@@ -95,6 +95,7 @@ func (tc *topicConsumer) assignPartitions() ([]int32, error) {
 	}
 	for i := int32(0); i < partNum; i++ {
 		id := consumerList[i%int32(consumerNum)]
+		cg.owners[tc.name][i] = id
 		if id == cg.id {
 			partitions = append(partitions, i)
 		}

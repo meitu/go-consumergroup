@@ -36,6 +36,7 @@ type ConsumerGroup struct {
 	stopCh    chan struct{}
 	triggerCh chan int
 	stopOnce  *sync.Once
+	owners    map[string]map[int32]string
 
 	config *Config
 	logger *logrus.Logger
@@ -72,8 +73,10 @@ func NewConsumerGroup(config *Config) (*ConsumerGroup, error) {
 	if err != nil {
 		return nil, fmt.Errorf("init sarama consumer, as %s", err)
 	}
+	cg.owners = make(map[string]map[int32]string)
 	for _, topic := range config.TopicList {
 		cg.topicConsumers[topic] = newTopicConsumer(cg, topic)
+		cg.owners[topic] = make(map[int32]string)
 	}
 	return cg, nil
 }
@@ -186,7 +189,6 @@ CONSUME_TOPIC_LOOP:
 			}(consumer)
 		}
 		cg.state = cgStart
-
 		msg := <-cg.triggerCh
 		switch msg {
 		case restartEvent:
@@ -303,4 +305,9 @@ func (cg *ConsumerGroup) GetOffsets() map[string]interface{} {
 		topics[topic] = tc.getOffsets()
 	}
 	return topics
+}
+
+// Owners return owners of all partitions
+func (cg *ConsumerGroup) Owners() map[string]map[int32]string {
+	return cg.owners
 }
