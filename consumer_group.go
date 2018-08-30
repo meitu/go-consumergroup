@@ -40,6 +40,8 @@ type ConsumerGroup struct {
 
 	config *Config
 	logger *logrus.Logger
+
+	onLoad, onClose []func()
 }
 
 // NewConsumerGroup create the ConsumerGroup instance with config
@@ -63,6 +65,8 @@ func NewConsumerGroup(config *Config) (*ConsumerGroup, error) {
 	cg.stopOnce = new(sync.Once)
 	cg.triggerCh = make(chan int)
 	cg.topicConsumers = make(map[string]*topicConsumer)
+	cg.onLoad = make([]func(), 0)
+	cg.onClose = make([]func(), 0)
 	cg.storage = newZKGroupStorage(config.ZkList, config.ZkSessionTimeout)
 	cg.logger = logrus.New()
 	if _, ok := cg.storage.(*zkGroupStorage); ok {
@@ -189,7 +193,13 @@ CONSUME_TOPIC_LOOP:
 			}(consumer)
 		}
 		cg.state = cgStart
+		for _, onLoadFunc := range cg.onLoad {
+			onLoadFunc()
+		}
 		msg := <-cg.triggerCh
+		for _, onCloseFunc := range cg.onClose {
+			onCloseFunc()
+		}
 		switch msg {
 		case restartEvent:
 			close(cg.stopCh)
@@ -237,6 +247,16 @@ func (cg *ConsumerGroup) GetErrors(topic string) (<-chan *sarama.ConsumerError, 
 		return topicConsumer.errors, true
 	}
 	return nil, false
+}
+
+// OnLoad load callback function that runs after startup
+func (cg *ConsumerGroup) OnLoad(cb func()) {
+	cg.onLoad = append(cg.onLoad, cb)
+}
+
+// OnClose load callback function that runs before the end
+func (cg *ConsumerGroup) OnClose(cb func()) {
+	cg.onClose = append(cg.onClose, cb)
 }
 
 func (cg *ConsumerGroup) autoReconnect(interval time.Duration) {
