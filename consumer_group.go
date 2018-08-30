@@ -186,10 +186,11 @@ CONSUME_TOPIC_LOOP:
 		}()
 		for _, consumer := range cg.topicConsumers {
 			wg.Add(1)
+			consumer.start()
 			go func(tc *topicConsumer) {
 				defer cg.callRecover()
 				defer wg.Done()
-				tc.start()
+				tc.wg.Wait()
 			}(consumer)
 		}
 		cg.state = cgStart
