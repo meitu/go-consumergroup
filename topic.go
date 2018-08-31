@@ -15,6 +15,7 @@ type topicConsumer struct {
 	errors             chan *sarama.ConsumerError
 	messages           chan *sarama.ConsumerMessage
 	partitionConsumers map[int32]*partitionConsumer
+	wg                 sync.WaitGroup
 }
 
 func newTopicConsumer(owner *ConsumerGroup, topic string) *topicConsumer {
@@ -28,7 +29,6 @@ func newTopicConsumer(owner *ConsumerGroup, topic string) *topicConsumer {
 }
 
 func (tc *topicConsumer) start() {
-	var wg sync.WaitGroup
 
 	cg := tc.owner
 	topic := tc.name
@@ -62,10 +62,10 @@ func (tc *topicConsumer) start() {
 		tc.partitionConsumers[partition] = newPartitionConsumer(tc, partition)
 	}
 	for partition, consumer := range tc.partitionConsumers {
-		wg.Add(1)
+		tc.wg.Add(1)
 		go func(pc *partitionConsumer) {
 			defer cg.callRecover()
-			defer wg.Done()
+			defer tc.wg.Done()
 			pc.start()
 		}(consumer)
 		cg.logger.WithFields(logrus.Fields{
@@ -74,7 +74,6 @@ func (tc *topicConsumer) start() {
 			"partition": partition,
 		}).Info("Topic consumer start to consume the partition")
 	}
-	wg.Wait()
 }
 
 func (tc *topicConsumer) assignPartitions() ([]int32, error) {
@@ -95,6 +94,7 @@ func (tc *topicConsumer) assignPartitions() ([]int32, error) {
 	}
 	for i := int32(0); i < partNum; i++ {
 		id := consumerList[i%int32(consumerNum)]
+		cg.owners[tc.name][i] = id
 		if id == cg.id {
 			partitions = append(partitions, i)
 		}

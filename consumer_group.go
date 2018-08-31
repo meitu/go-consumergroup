@@ -36,9 +36,12 @@ type ConsumerGroup struct {
 	stopCh    chan struct{}
 	triggerCh chan int
 	stopOnce  *sync.Once
+	owners    map[string]map[int32]string
 
 	config *Config
 	logger *logrus.Logger
+
+	onLoad, onClose []func()
 }
 
 // NewConsumerGroup create the ConsumerGroup instance with config
@@ -62,6 +65,8 @@ func NewConsumerGroup(config *Config) (*ConsumerGroup, error) {
 	cg.stopOnce = new(sync.Once)
 	cg.triggerCh = make(chan int)
 	cg.topicConsumers = make(map[string]*topicConsumer)
+	cg.onLoad = make([]func(), 0)
+	cg.onClose = make([]func(), 0)
 	cg.storage = newZKGroupStorage(config.ZkList, config.ZkSessionTimeout)
 	cg.logger = logrus.New()
 	if _, ok := cg.storage.(*zkGroupStorage); ok {
@@ -72,8 +77,10 @@ func NewConsumerGroup(config *Config) (*ConsumerGroup, error) {
 	if err != nil {
 		return nil, fmt.Errorf("init sarama consumer, as %s", err)
 	}
+	cg.owners = make(map[string]map[int32]string)
 	for _, topic := range config.TopicList {
 		cg.topicConsumers[topic] = newTopicConsumer(cg, topic)
+		cg.owners[topic] = make(map[int32]string)
 	}
 	return cg, nil
 }
@@ -179,15 +186,21 @@ CONSUME_TOPIC_LOOP:
 		}()
 		for _, consumer := range cg.topicConsumers {
 			wg.Add(1)
+			consumer.start()
 			go func(tc *topicConsumer) {
 				defer cg.callRecover()
 				defer wg.Done()
-				tc.start()
+				tc.wg.Wait()
 			}(consumer)
 		}
 		cg.state = cgStart
-
+		for _, onLoadFunc := range cg.onLoad {
+			onLoadFunc()
+		}
 		msg := <-cg.triggerCh
+		for _, onCloseFunc := range cg.onClose {
+			onCloseFunc()
+		}
 		switch msg {
 		case restartEvent:
 			close(cg.stopCh)
@@ -235,6 +248,16 @@ func (cg *ConsumerGroup) GetErrors(topic string) (<-chan *sarama.ConsumerError, 
 		return topicConsumer.errors, true
 	}
 	return nil, false
+}
+
+// OnLoad load callback function that runs after startup
+func (cg *ConsumerGroup) OnLoad(cb func()) {
+	cg.onLoad = append(cg.onLoad, cb)
+}
+
+// OnClose load callback function that runs before the end
+func (cg *ConsumerGroup) OnClose(cb func()) {
+	cg.onClose = append(cg.onClose, cb)
 }
 
 func (cg *ConsumerGroup) autoReconnect(interval time.Duration) {
@@ -303,4 +326,9 @@ func (cg *ConsumerGroup) GetOffsets() map[string]interface{} {
 		topics[topic] = tc.getOffsets()
 	}
 	return topics
+}
+
+// Owners return owners of all partitions
+func (cg *ConsumerGroup) Owners() map[string]map[int32]string {
+	return cg.owners
 }
