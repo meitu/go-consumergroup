@@ -224,6 +224,9 @@ func (s *zkGroupStorage) getBrokerList() ([]string, error) {
 	for _, id := range idList {
 		zkPath := fmt.Sprintf(brokersPath, id)
 		value, _, err := c.Get(zkPath)
+		if err != nil {
+			return nil, err
+		}
 		err = json.Unmarshal(value, &b)
 		if err != nil {
 			return nil, err
