@@ -43,7 +43,7 @@ func (pc *partitionConsumer) start() {
 			"topic":     pc.topic,
 			"partition": pc.partition,
 			"err":       err,
-		}).Error("Failed to clamin the partition and gave up")
+		}).Error("Failed to claim the partition and gave up")
 		goto ERROR
 	}
 	defer func() {
@@ -166,7 +166,7 @@ func (pc *partitionConsumer) claim() error {
 				"partition": pc.partition,
 				"retries":   i,
 				"err":       err,
-			}).Warn("Failed to claim the partiton with retries")
+			}).Warn("Failed to claim the partition with retries")
 		}
 		select {
 		case <-timer.C:
