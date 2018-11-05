@@ -30,13 +30,13 @@ type ConsumerGroup struct {
 	topicConsumers map[string]*topicConsumer
 	saramaConsumer sarama.Consumer
 
-	id        string
-	state     int
-	wg        sync.WaitGroup
-	stopCh    chan struct{}
-	triggerCh chan int
-	stopOnce  *sync.Once
-	owners    map[string]map[int32]string
+	id          string
+	state       int
+	wg          sync.WaitGroup
+	stopCh      chan struct{}
+	triggerCh   chan int
+	triggerOnce *sync.Once
+	owners      map[string]map[int32]string
 
 	config *Config
 	logger *logrus.Logger
@@ -62,7 +62,6 @@ func NewConsumerGroup(config *Config) (*ConsumerGroup, error) {
 		cg.id = genConsumerID()
 	}
 	cg.name = config.GroupID
-	cg.stopOnce = new(sync.Once)
 	cg.triggerCh = make(chan int)
 	cg.topicConsumers = make(map[string]*topicConsumer)
 	cg.onLoad = make([]func(), 0)
@@ -129,10 +128,6 @@ func (cg *ConsumerGroup) IsStopped() bool {
 	return cg.state == cgStopped
 }
 
-func (cg *ConsumerGroup) triggerRebalance() {
-	cg.triggerCh <- restartEvent
-}
-
 func (cg *ConsumerGroup) callRecover() {
 	if err := recover(); err != nil {
 		cg.logger.WithFields(logrus.Fields{
@@ -167,6 +162,7 @@ func (cg *ConsumerGroup) start() {
 CONSUME_TOPIC_LOOP:
 	for {
 		cg.logger.WithField("group", cg.name).Info("Consumer group started")
+		cg.triggerOnce = new(sync.Once)
 		cg.stopCh = make(chan struct{})
 
 		err := cg.watchRebalance()
@@ -223,7 +219,11 @@ CONSUME_TOPIC_LOOP:
 }
 
 func (cg *ConsumerGroup) stop() {
-	cg.stopOnce.Do(func() { cg.triggerCh <- quitEvent })
+	cg.triggerOnce.Do(func() { cg.triggerCh <- quitEvent })
+}
+
+func (cg *ConsumerGroup) triggerRebalance() {
+	cg.triggerOnce.Do(func() { cg.triggerCh <- restartEvent })
 }
 
 func (cg *ConsumerGroup) getPartitionConsumer(topic string, partition int32, nextOffset int64) (sarama.PartitionConsumer, error) {
