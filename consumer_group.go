@@ -191,6 +191,10 @@ CONSUME_TOPIC_LOOP:
 				defer cg.callRecover()
 				defer wg.Done()
 				tc.wg.Wait()
+				cg.logger.WithFields(logrus.Fields{
+					"group": tc.group,
+					"topic": tc.name,
+				}).Info("Stop the topic consumer")
 			}(consumer)
 		}
 		cg.state = cgStart
