@@ -37,10 +37,6 @@ func (tc *topicConsumer) start() {
 		"group": tc.group,
 		"topic": topic,
 	}).Info("Start the topic consumer")
-	defer cg.logger.WithFields(logrus.Fields{
-		"group": tc.group,
-		"topic": topic,
-	}).Info("Stop the topic consumer")
 
 	partitions, err := tc.assignPartitions()
 	if err != nil {
