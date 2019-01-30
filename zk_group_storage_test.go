@@ -90,13 +90,13 @@ func TestZKGroupWatchConsumerList(t *testing.T) {
 		zk.registerConsumer(testGroup, consumer, nil)
 	}
 
-	ch, err := zk.watchConsumerList(testGroup)
+	watcher, err := zk.watchConsumerList(testGroup)
 	if err != nil {
 		t.Error(err)
 	}
 
 	select {
-	case <-ch:
+	case <-watcher.EvCh:
 		t.Error("channel receive message before consumer list change")
 	default:
 	}
@@ -104,7 +104,7 @@ func TestZKGroupWatchConsumerList(t *testing.T) {
 	zk.deleteConsumer(testGroup, consumer1)
 
 	select {
-	case <-ch:
+	case <-watcher.EvCh:
 	default:
 		t.Error("channel can't receive message after consumer list change")
 	}

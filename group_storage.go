@@ -1,6 +1,6 @@
 package consumergroup
 
-import "github.com/samuel/go-zookeeper/zk"
+import "github.com/meitu/go-zookeeper/zk"
 
 type groupStorage interface {
 	claimPartition(group, topic string, partition int32, consumerID string) error
@@ -11,7 +11,10 @@ type groupStorage interface {
 	deleteConsumer(group, consumerID string) error
 	getBrokerList() ([]string, error)
 	getConsumerList(group string) ([]string, error)
-	watchConsumerList(group string) (<-chan zk.Event, error)
+	watchConsumerList(group string) (*zk.Watcher, error)
+	watchTopic(topic string) (*zk.Watcher, error)
+	getPartitionsNum(topic string) (int, error)
 	commitOffset(group, topic string, partition int32, offset int64) error
 	getOffset(group, topic string, partition int32) (int64, error)
+	removeWatcher(watcher *zk.Watcher) bool
 }

@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/meitu/go-zookeeper/zk"
 	"github.com/meitu/zk_wrapper"
-	"github.com/samuel/go-zookeeper/zk"
 )
 
 // constants defining the fixed path format.
@@ -20,6 +20,7 @@ const (
 	offsetsPath   = "/consumers/%s/offsets/%s/%d"
 	brokersDir    = "/brokers/ids"
 	brokersPath   = "/brokers/ids/%s"
+	topicsPath    = "/brokers/topics/%s"
 )
 
 type zkGroupStorage struct {
@@ -181,7 +182,7 @@ func (s *zkGroupStorage) deleteConsumer(group, consumerID string) error {
 	return err
 }
 
-func (s *zkGroupStorage) watchConsumerList(group string) (<-chan zk.Event, error) {
+func (s *zkGroupStorage) watchConsumerList(group string) (*zk.Watcher, error) {
 	if group == "" {
 		return nil, errInvalidGroup
 	}
@@ -192,15 +193,28 @@ func (s *zkGroupStorage) watchConsumerList(group string) (<-chan zk.Event, error
 	}
 
 	zkPath := fmt.Sprintf(consumersDir, group)
-	_, _, ech, err := c.ChildrenW(zkPath)
+	_, _, w, err := c.ChildrenW(zkPath)
 	if err != nil {
 		return nil, err
 	}
-	return ech, nil
+	return w, nil
 }
 
-func (s *zkGroupStorage) watchTopicChange(topic string) {
-	// TODO;
+func (s *zkGroupStorage) watchTopic(topic string) (*zk.Watcher, error) {
+	if topic == "" {
+		return nil, errInvalidTopic
+	}
+
+	c, err := s.getClient()
+	if err != nil {
+		return nil, err
+	}
+	zkPath := fmt.Sprintf(topicsPath, topic)
+	_, _, w, err := c.GetW(zkPath)
+	if err != nil {
+		return nil, err
+	}
+	return w, nil
 }
 
 func (s *zkGroupStorage) getBrokerList() ([]string, error) {
@@ -300,4 +314,33 @@ func (s *zkGroupStorage) getOffset(group, topic string, partition int32) (int64,
 		return -1, nil
 	}
 	return strconv.ParseInt(string(value), 10, 64)
+}
+
+func (s *zkGroupStorage) removeWatcher(w *zk.Watcher) bool {
+	c, err := s.getClient()
+	if err != nil {
+		return false
+	}
+	return c.RemoveWatcher(w)
+}
+
+func (s *zkGroupStorage) getPartitionsNum(topic string) (int, error) {
+	type meta struct {
+		Partitions map[int][]int
+	}
+	c, err := s.getClient()
+	if err != nil {
+		return 0, err
+	}
+	zkPath := fmt.Sprintf(topicsPath, topic)
+	metadata, _, err := c.Get(zkPath)
+	if err != nil {
+		return 0, err
+	}
+	var m meta
+	err = json.Unmarshal([]byte(metadata), &m)
+	if err != nil {
+		return 0, err
+	}
+	return len(m.Partitions), nil
 }
