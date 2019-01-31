@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/meitu/go-zookeeper/zk"
 	"github.com/meitu/zk_wrapper"
-	"github.com/samuel/go-zookeeper/zk"
 )
 
 const (

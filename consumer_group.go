@@ -3,12 +3,13 @@ package consumergroup
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"runtime/debug"
 	"sync"
 	"time"
 
 	"github.com/Shopify/sarama"
-	"github.com/samuel/go-zookeeper/zk"
+	"github.com/meitu/go-zookeeper/zk"
 	"github.com/sirupsen/logrus"
 )
 
@@ -28,6 +29,7 @@ type ConsumerGroup struct {
 	name           string
 	storage        groupStorage
 	topicConsumers map[string]*topicConsumer
+	saramaClient   sarama.Client
 	saramaConsumer sarama.Consumer
 
 	id          string
@@ -92,7 +94,11 @@ func (cg *ConsumerGroup) initSaramaConsumer() error {
 	if len(brokerList) == 0 {
 		return errors.New("no broker alive")
 	}
-	cg.saramaConsumer, err = sarama.NewConsumer(brokerList, cg.config.SaramaConfig)
+	cg.saramaClient, err = sarama.NewClient(brokerList, cg.config.SaramaConfig)
+	if err != nil {
+		return err
+	}
+	cg.saramaConsumer, err = sarama.NewConsumerFromClient(cg.saramaClient)
 	return err
 }
 
@@ -297,7 +303,11 @@ func (cg *ConsumerGroup) autoReconnect(interval time.Duration) {
 }
 
 func (cg *ConsumerGroup) watchRebalance() error {
-	consumerListChange, err := cg.storage.watchConsumerList(cg.name)
+	consumersWatcher, err := cg.storage.watchConsumerList(cg.name)
+	if err != nil {
+		return err
+	}
+	topicsChange, topicWatchers, err := cg.watchTopics(cg.config.TopicList)
 	if err != nil {
 		return err
 	}
@@ -305,9 +315,19 @@ func (cg *ConsumerGroup) watchRebalance() error {
 		defer cg.callRecover()
 		cg.logger.WithField("group", cg.name).Info("Rebalance watcher thread was started")
 		select {
-		case <-consumerListChange:
+		case <-consumersWatcher.EvCh:
 			cg.triggerRebalance()
 			cg.logger.WithField("group", cg.name).Info("Trigger rebalance while consumers was changed")
+			for _, tw := range topicWatchers {
+				cg.storage.removeWatcher(tw)
+			}
+		case topic := <-topicsChange:
+			cg.triggerRebalance()
+			cg.logger.WithFields(logrus.Fields{
+				"group": cg.name,
+				"topic": topic,
+			}).Info("Trigger rebalance while partitions was changed")
+			cg.storage.removeWatcher(consumersWatcher)
 		case <-cg.stopCh:
 		}
 		cg.logger.WithField("group", cg.name).Info("Rebalance watcher thread was exited")
@@ -335,4 +355,52 @@ func (cg *ConsumerGroup) GetOffsets() map[string]interface{} {
 // Owners return owners of all partitions
 func (cg *ConsumerGroup) Owners() map[string]map[int32]string {
 	return cg.owners
+}
+
+func (cg *ConsumerGroup) watchTopics(topics []string) (<-chan string, []*zk.Watcher, error) {
+	ch := make(chan string)
+	cases := make([]reflect.SelectCase, len(topics))
+	watchers := make([]*zk.Watcher, len(topics))
+	for i, topic := range topics {
+		w, err := cg.storage.watchTopic(topic)
+		if err != nil {
+			return nil, nil, err
+		}
+		watchers[i] = w
+		cases[i] = reflect.SelectCase{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(w.EvCh)}
+	}
+	go func(cases []reflect.SelectCase, ch chan string, topics []string) {
+		chosen, _, ok := reflect.Select(cases)
+		if !ok {
+			//the chosen channel has been closed.
+			return
+		}
+		topic := topics[chosen]
+		num, err := cg.storage.getPartitionsNum(topic)
+		if err != nil {
+			cg.logger.WithFields(logrus.Fields{
+				"topic": topic,
+				"err":   err,
+			}).Error("Failed to get partitions in zookeeper after topic metadata change")
+			return
+		}
+		for {
+			cg.saramaClient.RefreshMetadata(topic)
+			partitions, err := cg.saramaClient.Partitions(topic)
+			if err != nil {
+				cg.logger.WithFields(logrus.Fields{
+					"topic": topic,
+					"err":   err,
+				}).Error("Failed to get partitions in broker after topic metadata change")
+				return
+			}
+			if len(partitions) == num {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		ch <- topics[chosen]
+	}(cases, ch, topics)
+	return ch, watchers, nil
 }
