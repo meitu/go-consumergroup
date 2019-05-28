@@ -236,6 +236,12 @@ func (cg *ConsumerGroup) getPartitionConsumer(topic string, partition int32, nex
 	consumer, err := cg.saramaConsumer.ConsumePartition(topic, partition, nextOffset)
 	if err == sarama.ErrOffsetOutOfRange {
 		nextOffset = cg.config.OffsetAutoReset
+		cg.logger.WithFields(logrus.Fields{
+			"group":     cg.name,
+			"topic":     topic,
+			"partition": partition,
+			"offset":    nextOffset,
+		}).Error("Partition's offset was out of range, use auto-reset")
 		consumer, err = cg.saramaConsumer.ConsumePartition(topic, partition, nextOffset)
 	}
 	return consumer, err
