@@ -238,10 +238,7 @@ func (cg *ConsumerGroup) getPartitionConsumer(topic string, partition int32, nex
 		nextOffset = cg.config.OffsetAutoReset
 		consumer, err = cg.saramaConsumer.ConsumePartition(topic, partition, nextOffset)
 	}
-	if err != nil {
-		return nil, err
-	}
-	return consumer, nil
+	return consumer, err
 }
 
 // GetMessages was used to get a unbuffered message's channel from specified topic
