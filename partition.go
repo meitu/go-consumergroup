@@ -126,7 +126,7 @@ func (pc *partitionConsumer) start() {
 			"topic":     pc.topic,
 			"partition": pc.partition,
 			"offset":    pc.offset,
-		}).Info("Start the partition's offset auto-commit thread")
+		}).Info("The partition's offset auto-commit thread was stopped")
 	}
 	return
 
