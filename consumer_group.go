@@ -26,11 +26,11 @@ const (
 
 // ConsumerGroup consume message from Kafka with rebalancing supports
 type ConsumerGroup struct {
-	name           string
-	storage        groupStorage
-	topicConsumers map[string]*topicConsumer
-	saramaClient   sarama.Client
-	saramaConsumer sarama.Consumer
+	name            string
+	storage         groupStorage
+	topicConsumers  map[string]*topicConsumer
+	saramaClients   map[string]sarama.Client
+	saramaConsumers map[string]sarama.Consumer
 
 	id          string
 	state       int
@@ -66,6 +66,8 @@ func NewConsumerGroup(config *Config) (*ConsumerGroup, error) {
 	cg.name = config.GroupID
 	cg.triggerCh = make(chan int)
 	cg.topicConsumers = make(map[string]*topicConsumer)
+	cg.saramaClients = make(map[string]sarama.Client)
+	cg.saramaConsumers = make(map[string]sarama.Consumer)
 	cg.onLoad = make([]func(), 0)
 	cg.onClose = make([]func(), 0)
 	cg.storage = newZKGroupStorage(config.ZkList, config.ZkSessionTimeout)
@@ -94,12 +96,19 @@ func (cg *ConsumerGroup) initSaramaConsumer() error {
 	if len(brokerList) == 0 {
 		return errors.New("no broker alive")
 	}
-	cg.saramaClient, err = sarama.NewClient(brokerList, cg.config.SaramaConfig)
-	if err != nil {
-		return err
+	for _, topic := range cg.config.TopicList {
+		saramaClient, err := sarama.NewClient(brokerList, cg.config.SaramaConfig)
+		if err != nil {
+			return err
+		}
+		saramaConsumer, err := sarama.NewConsumerFromClient(saramaClient)
+		if err != nil {
+			return err
+		}
+		cg.saramaClients[topic] = saramaClient
+		cg.saramaConsumers[topic] = saramaConsumer
 	}
-	cg.saramaConsumer, err = sarama.NewConsumerFromClient(cg.saramaClient)
-	return err
+	return nil
 }
 
 // Start would register ConsumerGroup, and rebalance would be triggered.
@@ -233,7 +242,8 @@ func (cg *ConsumerGroup) triggerRebalance() {
 }
 
 func (cg *ConsumerGroup) getPartitionConsumer(topic string, partition int32, nextOffset int64) (sarama.PartitionConsumer, error) {
-	consumer, err := cg.saramaConsumer.ConsumePartition(topic, partition, nextOffset)
+	saramaConsumer := cg.saramaConsumers[topic]
+	consumer, err := saramaConsumer.ConsumePartition(topic, partition, nextOffset)
 	if err == sarama.ErrOffsetOutOfRange {
 		nextOffset = cg.config.OffsetAutoReset
 		cg.logger.WithFields(logrus.Fields{
@@ -242,7 +252,7 @@ func (cg *ConsumerGroup) getPartitionConsumer(topic string, partition int32, nex
 			"partition": partition,
 			"offset":    nextOffset,
 		}).Error("Partition's offset was out of range, use auto-reset")
-		consumer, err = cg.saramaConsumer.ConsumePartition(topic, partition, nextOffset)
+		consumer, err = saramaConsumer.ConsumePartition(topic, partition, nextOffset)
 	}
 	return consumer, err
 }
@@ -388,8 +398,9 @@ func (cg *ConsumerGroup) watchTopics(topics []string) (<-chan string, []*zk.Watc
 			return
 		}
 		for {
-			cg.saramaClient.RefreshMetadata(topic)
-			partitions, err := cg.saramaClient.Partitions(topic)
+			saramaClient := cg.saramaClients[topic]
+			saramaClient.RefreshMetadata(topic)
+			partitions, err := saramaClient.Partitions(topic)
 			if err != nil {
 				cg.logger.WithFields(logrus.Fields{
 					"topic": topic,
