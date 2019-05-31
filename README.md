@@ -5,7 +5,7 @@ Go-consumergroup is a kafka consumer library written in golang with rebalance an
 [Chinese Doc](./README.zh-CN.md)
 
 ## Requirements
-* Apache Kafka 0.8.x, 0.9.x, 0.10.x
+* Apache Kafka 0.8.x, 0.9.x, 0.10.x, 0.11.x, 1.0.x
 
 ## Dependencies
 * [go-zookeeper](https://github.com/samuel/go-zookeeper)
