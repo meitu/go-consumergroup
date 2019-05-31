@@ -20,8 +20,7 @@ const (
 )
 
 const (
-	restartEvent = iota
-	quitEvent
+	restartEvent = 1
 )
 
 // ConsumerGroup consume message from Kafka with rebalancing supports
@@ -223,7 +222,7 @@ CONSUME_TOPIC_LOOP:
 			// So we should reinit when rebalance was triggered, as it would be closed.
 			wg.Wait()
 			continue CONSUME_TOPIC_LOOP
-		case quitEvent:
+		default:
 			close(cg.stopCh)
 			cg.logger.WithField("group", cg.name).Info("ConsumerGroup is stopping")
 			wg.Wait()
@@ -234,7 +233,7 @@ CONSUME_TOPIC_LOOP:
 }
 
 func (cg *ConsumerGroup) stop() {
-	cg.triggerOnce.Do(func() { cg.triggerCh <- quitEvent })
+	cg.triggerOnce.Do(func() { close(cg.triggerCh) })
 }
 
 func (cg *ConsumerGroup) triggerRebalance() {
