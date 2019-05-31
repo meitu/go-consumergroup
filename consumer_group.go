@@ -376,7 +376,7 @@ func (cg *ConsumerGroup) watchTopics(topics []string) (<-chan string, []*zk.Watc
 	for i, topic := range topics {
 		w, err := cg.storage.watchTopic(topic)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, fmt.Errorf("encounter error when watch topic: %s, err: %s", topic, err)
 		}
 		watchers[i] = w
 		cases[i] = reflect.SelectCase{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(w.EvCh)}
