@@ -99,15 +99,15 @@ func (tc *topicConsumer) assignPartitions() ([]int32, error) {
 }
 
 func (tc *topicConsumer) getPartitionNum() (int32, error) {
-	if saramaConsumer, ok := tc.owner.saramaConsumers[tc.name]; !ok {
+	saramaConsumer, ok := tc.owner.saramaConsumers[tc.name]
+	if !ok {
 		return 0, errors.New("sarama conumser was not found")
-	} else {
-		partitions, err := saramaConsumer.Partitions(tc.name)
-		if err != nil {
-			return 0, err
-		}
-		return int32(len(partitions)), nil
 	}
+	partitions, err := saramaConsumer.Partitions(tc.name)
+	if err != nil {
+		return 0, err
+	}
+	return int32(len(partitions)), nil
 }
 
 func (tc *topicConsumer) getOffsets() map[int32]interface{} {
