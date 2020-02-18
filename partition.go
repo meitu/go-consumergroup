@@ -91,7 +91,9 @@ func (pc *partitionConsumer) start() {
 		}).Error("Failed to create the partition's consumer")
 		goto ERROR
 	}
-	defer pc.consumer.Close()
+	defer func() {
+		pc.consumer.Close()
+	}()
 
 	if cg.config.OffsetAutoCommitEnable { // start auto commit-offset thread when enable
 		wg.Add(1)
