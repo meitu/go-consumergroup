@@ -7,3 +7,9 @@ VERSION 0.2.0
 * Refactor GetTopicNextMessageChannel => GetMessages, GetTopicErrorsChannel
 => GetErrors
 * Refactor consumer-group into topic-consumer and partition-consumer
+
+VERSION  0.2.6
+
+* Fix wrong way to use defer function cause the failure of partition consumer
+close
+
