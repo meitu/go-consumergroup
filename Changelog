@@ -13,3 +13,6 @@ VERSION  0.2.6
 * Fix wrong way to use defer function cause the failure of partition consumer
 close
 
+VERSION  0.2.7
+
+* Set the consumer group initial state as stopped
