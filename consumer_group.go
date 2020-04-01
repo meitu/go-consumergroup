@@ -14,8 +14,7 @@ import (
 )
 
 const (
-	cgInit = iota
-	cgStart
+	cgStarted = iota + 1
 	cgStopped
 )
 
@@ -56,7 +55,7 @@ func NewConsumerGroup(config *Config) (*ConsumerGroup, error) {
 	}
 
 	cg := new(ConsumerGroup)
-	cg.state = cgInit
+	cg.state = cgStopped
 	cg.config = config
 	cg.id = config.ConsumerID
 	if cg.id == "" {
@@ -207,7 +206,7 @@ CONSUME_TOPIC_LOOP:
 				}).Info("Stop the topic consumer")
 			}(consumer)
 		}
-		cg.state = cgStart
+		cg.state = cgStarted
 		for _, onLoadFunc := range cg.onLoad {
 			onLoadFunc()
 		}
